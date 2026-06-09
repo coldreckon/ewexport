@@ -61,11 +61,19 @@ def build_executable():
         '--hidden-import=tkinter',
         '--hidden-import=striprtf',
         '--hidden-import=packaging',
-        
+        '--hidden-import=customtkinter',
+        '--hidden-import=darkdetect',
+        '--hidden-import=PIL',
+        '--hidden-import=PIL.Image',
+        '--hidden-import=PIL.ImageTk',
+
+        # Bundle customtkinter theme/asset files
+        '--collect-data=customtkinter',
+
         # Exclude unnecessary modules to reduce size and complexity
+        # (PIL must NOT be excluded - customtkinter imports PIL.Image)
         '--exclude-module=matplotlib',
         '--exclude-module=numpy',
-        '--exclude-module=PIL',
         '--exclude-module=scipy',
         '--exclude-module=pandas',
         
