@@ -6,14 +6,14 @@ All other modules should import from here rather than defining their own version
 """
 
 # Application version - update this single location for new releases
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 # Schema versions for configuration files
 SETTINGS_SCHEMA_VERSION = "1.2.0"
 SECTION_MAPPINGS_SCHEMA_VERSION = "1.2.0"
 
 # Release information
-RELEASE_DATE = "April 2026"
+RELEASE_DATE = "June 2026"
 RELEASE_YEAR = "2026"
 
 def get_version() -> str:
