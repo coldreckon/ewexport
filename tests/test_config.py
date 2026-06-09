@@ -95,6 +95,64 @@ class TestVersionComparison(unittest.TestCase):
         self.assertTrue(pkg_version.parse("1.10.0") > pkg_version.parse("1.2.0"))
 
 
+class TestSearchHistory(unittest.TestCase):
+    """Test search history persistence via ConfigManager."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.fake_home = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        shutil.rmtree(self.fake_home, ignore_errors=True)
+
+    def _make_config(self):
+        with patch('utils.config.get_app_data_dir', return_value=Path(self.temp_dir)):
+            return ConfigManager()
+
+    def test_empty_when_no_file(self):
+        config = self._make_config()
+        with patch.object(Path, 'home', return_value=Path(self.fake_home)):
+            self.assertEqual(config.get_search_history(), [])
+
+    def test_round_trip(self):
+        config = self._make_config()
+        history = ['amazing', 'härlig', 'grace']
+        self.assertTrue(config.save_search_history(history))
+        self.assertEqual(config.get_search_history(), history)
+        # Written to the app data dir, not the legacy location
+        self.assertTrue((Path(self.temp_dir) / 'search_history.json').exists())
+
+    def test_reads_legacy_location(self):
+        """History saved by older versions in ~/.ewexport is still readable."""
+        legacy_dir = Path(self.fake_home) / '.ewexport'
+        legacy_dir.mkdir(parents=True)
+        with open(legacy_dir / 'search_history.json', 'w', encoding='utf-8') as f:
+            json.dump({'search_history': ['old search']}, f)
+
+        config = self._make_config()
+        with patch.object(Path, 'home', return_value=Path(self.fake_home)):
+            self.assertEqual(config.get_search_history(), ['old search'])
+
+    def test_new_location_wins_over_legacy(self):
+        legacy_dir = Path(self.fake_home) / '.ewexport'
+        legacy_dir.mkdir(parents=True)
+        with open(legacy_dir / 'search_history.json', 'w', encoding='utf-8') as f:
+            json.dump({'search_history': ['legacy']}, f)
+
+        config = self._make_config()
+        config.save_search_history(['current'])
+        with patch.object(Path, 'home', return_value=Path(self.fake_home)):
+            self.assertEqual(config.get_search_history(), ['current'])
+
+    def test_corrupt_file_returns_empty(self):
+        config = self._make_config()
+        with open(Path(self.temp_dir) / 'search_history.json', 'w', encoding='utf-8') as f:
+            f.write('not json{')
+        with patch.object(Path, 'home', return_value=Path(self.fake_home)):
+            self.assertEqual(config.get_search_history(), [])
+
+
 class TestConfigMigration(unittest.TestCase):
     """Test configuration migration functionality."""
 

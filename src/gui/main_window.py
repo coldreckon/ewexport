@@ -8,7 +8,6 @@ from pathlib import Path
 import os
 import re
 import threading
-import json
 import logging
 from typing import List, Optional, Dict, Any
 from collections import deque
@@ -926,31 +925,13 @@ GitHub: https://github.com/karllinder/ewexport"""
         self.search_combo['values'] = list(self.search_history)
     
     def load_search_history(self):
-        """Load search history from settings file"""
-        settings_dir = Path.home() / '.ewexport'
-        settings_file = settings_dir / 'search_history.json'
-        
-        if settings_file.exists():
-            try:
-                with open(settings_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    history = data.get('search_history', [])
-                    for item in history[-10:]:  # Keep last 10
-                        self.search_history.append(item)
-            except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Could not load search history: {e}")
-    
+        """Load search history via the config manager"""
+        for item in self.config.get_search_history()[-10:]:  # Keep last 10
+            self.search_history.append(item)
+
     def save_search_history(self):
-        """Save search history to settings file"""
-        settings_dir = Path.home() / '.ewexport'
-        settings_dir.mkdir(exist_ok=True)
-        settings_file = settings_dir / 'search_history.json'
-        
-        try:
-            with open(settings_file, 'w', encoding='utf-8') as f:
-                json.dump({'search_history': list(self.search_history)}, f, indent=2)
-        except OSError as e:
-            logger.warning(f"Could not save search history: {e}")
+        """Save search history via the config manager"""
+        self.config.save_search_history(list(self.search_history))
     
     def run(self):
         # Set initial search history dropdown values
