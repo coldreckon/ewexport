@@ -9,11 +9,25 @@ import uuid
 import re
 import base64
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Callable
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DuplicateDecision:
+    """Decision for handling an export target file that already exists."""
+    action: str  # 'skip' | 'overwrite' | 'rename' | 'rename_custom' | 'cancel'
+    custom_name: Optional[str] = None
+    apply_to_all: bool = False
+
+
+# Callback invoked when an export target already exists:
+# (existing_path, remaining_duplicate_count) -> DuplicateDecision
+DuplicateResolver = Callable[[Path, int], DuplicateDecision]
 
 class ProPresenter6Exporter:
     """Handles export to ProPresenter 6 (.pro6) format with correct XML structure"""
@@ -574,7 +588,8 @@ class ProPresenter6Exporter:
             return False, error_msg
     
     def export_songs_batch(self, songs_with_sections: List[Tuple[Dict[str, Any], List[Dict[str, str]]]],
-                          output_path: Path, progress_callback=None, parent_window=None,
+                          output_path: Path, progress_callback=None,
+                          on_duplicate: Optional[DuplicateResolver] = None,
                           cancel_event=None) -> Tuple[List[str], List[str], List[str]]:
         """Export multiple songs with progress tracking, duplicate handling, and cancellation support
 
@@ -582,7 +597,9 @@ class ProPresenter6Exporter:
             songs_with_sections: List of tuples (song_data, sections)
             output_path: Directory to export files to
             progress_callback: Optional callback for progress updates
-            parent_window: Parent window for dialogs
+            on_duplicate: Optional callback asked to resolve existing target
+                files when the configured action is 'ask'. Without a callback,
+                duplicates are skipped.
             cancel_event: Optional threading.Event to signal cancellation
 
         Returns:
@@ -593,28 +610,14 @@ class ProPresenter6Exporter:
         failed_exports = []
         skipped_exports = []
         total_songs = len(songs_with_sections)
-        
-        # Build a map of existing files for duplicate detection
-        existing_files = {}
-        # Get the duplicate handling action from config
+
         dup_action = self.config.get('export.duplicate_handling_action', 'ask') if self.config else 'ask'
-        # Only build the map if we might need to handle duplicates (not overwrite mode)
-        if dup_action != 'overwrite':
-            # Count how many songs will create each filename
-            for idx, (song_data, _) in enumerate(songs_with_sections):
-                filename = self._generate_filename(song_data)
-                file_path = output_path / filename
-                if file_path.exists():
-                    if str(file_path) not in existing_files:
-                        existing_files[str(file_path)] = []
-                    existing_files[str(file_path)].append(idx)
-        
-        # Set duplicate action from config (if not "ask", pre-set the action)
-        default_action = self.config.get('export.duplicate_handling_action', 'ask') if self.config else 'ask'
-        if default_action != 'ask':
-            self.duplicate_action = default_action
-        else:
-            self.duplicate_action = None
+        # Only build the duplicate map if we might need it (not overwrite mode)
+        existing_files = self._build_duplicate_map(songs_with_sections, output_path) \
+            if dup_action != 'overwrite' else {}
+
+        # Pre-set the remembered action when config dictates one (not "ask")
+        self.duplicate_action = dup_action if dup_action != 'ask' else None
 
         for i, (song_data, sections) in enumerate(songs_with_sections):
             # Check for cancellation before processing each song
@@ -627,66 +630,85 @@ class ProPresenter6Exporter:
                 # Update progress
                 if progress_callback:
                     progress_callback(i, total_songs, song_data.get('title', 'Unknown'))
-                
-                # Check for duplicate file
-                filename = self._generate_filename(song_data)
-                file_path = output_path / filename
-                
+
+                file_path = output_path / self._generate_filename(song_data)
+
                 if file_path.exists() and dup_action != 'overwrite':
-                    # Handle duplicate - calculate remaining duplicates
-                    remaining = 0
-                    if str(file_path) in existing_files:
-                        # Count how many songs after this one will also hit this file
-                        indices = existing_files[str(file_path)]
-                        for idx in indices:
-                            if idx > i:
-                                remaining += 1
-                    
-                    action = self._handle_duplicate(file_path, remaining, parent_window)
-                    
-                    if action == 'skip':
+                    # Count how many songs after this one will also hit this file
+                    remaining = sum(1 for idx in existing_files.get(str(file_path), []) if idx > i)
+                    decision = self._resolve_duplicate(file_path, remaining, on_duplicate)
+
+                    if decision.action == 'skip':
                         skipped_exports.append(song_data.get('title', 'Unknown'))
                         continue
-                    elif action == 'cancel':
+                    elif decision.action == 'cancel':
                         failed_exports.append(f"Cancelled: {song_data.get('title', 'Unknown')}")
                         break
-                    elif action.startswith('rename'):
-                        # Rename the file
-                        if action == 'rename':
-                            # Auto-rename with number
-                            base = file_path.stem
-                            ext = file_path.suffix
-                            counter = 1
-                            while file_path.exists():
-                                file_path = file_path.parent / f"{base}_{counter}{ext}"
-                                counter += 1
-                        else:
-                            # Custom rename
-                            custom_name = action.split(':', 1)[1] if ':' in action else action
-                            # Sanitize so a name like "..\evil" cannot escape the
-                            # chosen export directory or introduce path separators.
-                            custom_name = self.sanitize_filename(custom_name)
-                            file_path = file_path.parent / f"{custom_name}.pro6"
-                
+                    elif decision.action in ('rename', 'rename_custom'):
+                        file_path = self._apply_rename(file_path, decision)
+
                 # Export song with potentially modified path
                 success, result = self._export_song_to_path(song_data, sections, file_path)
-                
+
                 if success:
                     successful_exports.append(result)
                 else:
                     failed_exports.append(result)
-                    
+
             except Exception as e:
                 title = song_data.get('title', 'Unknown')
                 error_msg = f"Unexpected error exporting '{title}': {str(e)}"
                 logger.error(f"Export failed for song ID {song_data.get('rowid', '?')}: {title}", exc_info=True)
                 failed_exports.append(error_msg)
-        
+
         # Final progress update
         if progress_callback:
             progress_callback(total_songs, total_songs, "Export complete")
 
         return successful_exports, failed_exports, skipped_exports
+
+    def _build_duplicate_map(self, songs_with_sections: List[Tuple[Dict[str, Any], List[Dict[str, str]]]],
+                             output_path: Path) -> Dict[str, List[int]]:
+        """Map existing target file paths to indices of songs that would write them"""
+        existing_files: Dict[str, List[int]] = {}
+        for idx, (song_data, _) in enumerate(songs_with_sections):
+            file_path = output_path / self._generate_filename(song_data)
+            if file_path.exists():
+                existing_files.setdefault(str(file_path), []).append(idx)
+        return existing_files
+
+    def _resolve_duplicate(self, file_path: Path, remaining: int,
+                           on_duplicate: Optional[DuplicateResolver]) -> DuplicateDecision:
+        """Resolve an existing target file, honoring a remembered apply-to-all action"""
+        if self.duplicate_action:
+            return DuplicateDecision(self.duplicate_action)
+
+        if on_duplicate is None:
+            return DuplicateDecision('skip')
+
+        decision = on_duplicate(file_path, remaining)
+        if decision.apply_to_all:
+            # A single custom name cannot apply to every file; fall back to
+            # auto-numbered renaming for the remaining duplicates.
+            self.duplicate_action = 'rename' if decision.action == 'rename_custom' else decision.action
+        return decision
+
+    def _apply_rename(self, file_path: Path, decision: DuplicateDecision) -> Path:
+        """Compute the target path for a rename decision"""
+        if decision.action == 'rename_custom' and decision.custom_name:
+            # Sanitize so a name like "..\evil" cannot escape the
+            # chosen export directory or introduce path separators.
+            custom_name = self.sanitize_filename(decision.custom_name)
+            return file_path.parent / f"{custom_name}.pro6"
+
+        # Auto-rename with number suffix
+        base = file_path.stem
+        ext = file_path.suffix
+        counter = 1
+        while file_path.exists():
+            file_path = file_path.parent / f"{base}_{counter}{ext}"
+            counter += 1
+        return file_path
     
     def _generate_filename(self, song_data: Dict[str, Any]) -> str:
         """Generate filename based on config settings"""
@@ -706,32 +728,6 @@ class ProPresenter6Exporter:
                 title = f"{title}_{author}"
         
         return f"{title}.pro6"
-    
-    def _handle_duplicate(self, file_path: Path, remaining: int, parent_window) -> str:
-        """Handle duplicate file, return action to take"""
-        # If we have a remembered action, use it
-        if self.duplicate_action:
-            return self.duplicate_action
-        
-        # Otherwise show dialog if we have a parent window
-        if parent_window:
-            from src.gui.dialogs import DuplicateFileDialog
-            dialog = DuplicateFileDialog(parent_window, file_path, remaining)
-            parent_window.wait_window(dialog.dialog)
-            
-            if dialog.result:
-                action, custom_name = dialog.result
-                
-                # Remember action if requested
-                if dialog.apply_to_all:
-                    self.duplicate_action = action
-                
-                if action == 'rename_custom' and custom_name:
-                    return f"rename:{custom_name}"
-                return action
-        
-        # Default to skip if no parent window
-        return 'skip'
     
     def _export_song_to_path(self, song_data: Dict[str, Any], sections: List[Dict[str, str]], 
                              file_path: Path) -> Tuple[bool, str]:

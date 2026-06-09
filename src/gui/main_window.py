@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from collections import deque
 from src.database.easyworship import EasyWorshipDatabase
-from src.export.propresenter import ProPresenter6Exporter
+from src.export.propresenter import ProPresenter6Exporter, DuplicateDecision
 from src.gui.settings_window import SettingsWindow
 from src.gui.dialogs import DuplicateFileDialog, ExportOptionsDialog
 from src.utils.config import get_config
@@ -547,7 +547,7 @@ GitHub: https://github.com/karllinder/ewexport"""
                 songs_to_export,
                 output_dir,
                 progress_callback=self.update_export_progress,
-                parent_window=self.root,
+                on_duplicate=self._ask_duplicate_decision,
                 cancel_event=self.export_cancel_event
             )
 
@@ -559,6 +559,32 @@ GitHub: https://github.com/karllinder/ewexport"""
             logger.error("Export worker failed", exc_info=True)
             self.root.after(0, self.export_error, error_msg)
     
+    def _ask_duplicate_decision(self, file_path: Path, remaining: int) -> DuplicateDecision:
+        """Resolve a duplicate export file by asking the user.
+
+        Called from the export worker thread; the dialog must be created on
+        the Tk main thread, so marshal via after() and block the worker until
+        the user answers.
+        """
+        holder = {}
+        done = threading.Event()
+
+        def show():
+            try:
+                dialog = DuplicateFileDialog(self.root, file_path, remaining)
+                self.root.wait_window(dialog.dialog)
+                action, custom_name = dialog.result or ('cancel', None)
+                holder['decision'] = DuplicateDecision(action, custom_name, dialog.apply_to_all)
+            except Exception:
+                logger.error("Duplicate dialog failed", exc_info=True)
+                holder['decision'] = DuplicateDecision('cancel')
+            finally:
+                done.set()
+
+        self.root.after(0, show)
+        done.wait()
+        return holder['decision']
+
     def update_export_progress(self, current: int, total: int, song_title: str):
         """Update progress bar and label (called from background thread)"""
         def update_ui():

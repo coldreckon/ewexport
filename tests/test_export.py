@@ -17,7 +17,7 @@ from pathlib import Path
 # Add src to path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from export.propresenter import ProPresenter6Exporter
+from export.propresenter import ProPresenter6Exporter, DuplicateDecision
 
 
 class ConfigStub:
@@ -277,6 +277,66 @@ class TestExportSongsBatch(unittest.TestCase):
         self.assertTrue((self.temp_dir / 'Song One_1.pro6').exists())
         # Original left untouched
         self.assertEqual((self.temp_dir / 'Song One.pro6').read_text(encoding='utf-8'), 'existing')
+
+    def test_duplicate_ask_without_callback_skips(self):
+        (self.temp_dir / 'Song One.pro6').write_text('existing', encoding='utf-8')
+        exporter = ProPresenter6Exporter(config=ConfigStub())  # action defaults to 'ask'
+        successful, failed, skipped = exporter.export_songs_batch(self._batch(), self.temp_dir)
+        self.assertEqual(skipped, ['Song One'])
+        self.assertEqual(len(successful), 1)
+
+    def test_duplicate_callback_custom_rename(self):
+        (self.temp_dir / 'Song One.pro6').write_text('existing', encoding='utf-8')
+        exporter = ProPresenter6Exporter(config=ConfigStub())
+        calls = []
+
+        def on_duplicate(path, remaining):
+            calls.append((path.name, remaining))
+            return DuplicateDecision('rename_custom', custom_name='My Custom Name')
+
+        successful, failed, skipped = exporter.export_songs_batch(
+            self._batch(), self.temp_dir, on_duplicate=on_duplicate)
+        self.assertEqual(calls, [('Song One.pro6', 0)])
+        self.assertEqual(len(successful), 2)
+        self.assertTrue((self.temp_dir / 'My Custom Name.pro6').exists())
+        self.assertEqual((self.temp_dir / 'Song One.pro6').read_text(encoding='utf-8'), 'existing')
+
+    def test_duplicate_callback_custom_rename_sanitized(self):
+        (self.temp_dir / 'Song One.pro6').write_text('existing', encoding='utf-8')
+        exporter = ProPresenter6Exporter(config=ConfigStub())
+        exporter.export_songs_batch(
+            self._batch(), self.temp_dir,
+            on_duplicate=lambda p, r: DuplicateDecision('rename_custom', custom_name='..\\evil'))
+        # Path separators must not escape the export directory
+        # ('..\evil' -> backslash replaced, leading dots stripped -> '_evil')
+        self.assertTrue((self.temp_dir / '_evil.pro6').exists())
+
+    def test_duplicate_callback_apply_to_all_called_once(self):
+        (self.temp_dir / 'Song One.pro6').write_text('one', encoding='utf-8')
+        (self.temp_dir / 'Song Two.pro6').write_text('two', encoding='utf-8')
+        exporter = ProPresenter6Exporter(config=ConfigStub())
+        calls = []
+
+        def on_duplicate(path, remaining):
+            calls.append(path.name)
+            return DuplicateDecision('skip', apply_to_all=True)
+
+        successful, failed, skipped = exporter.export_songs_batch(
+            self._batch(), self.temp_dir, on_duplicate=on_duplicate)
+        self.assertEqual(calls, ['Song One.pro6'])
+        self.assertEqual(skipped, ['Song One', 'Song Two'])
+        self.assertEqual(successful, [])
+
+    def test_duplicate_callback_cancel_stops_batch(self):
+        (self.temp_dir / 'Song One.pro6').write_text('existing', encoding='utf-8')
+        exporter = ProPresenter6Exporter(config=ConfigStub())
+        successful, failed, skipped = exporter.export_songs_batch(
+            self._batch(), self.temp_dir,
+            on_duplicate=lambda p, r: DuplicateDecision('cancel'))
+        self.assertEqual(successful, [])
+        self.assertEqual(len(failed), 1)
+        self.assertIn('Cancelled', failed[0])
+        self.assertFalse((self.temp_dir / 'Song Two.pro6').exists())
 
     def test_song_without_content_reported_failed(self):
         exporter = ProPresenter6Exporter(config=ConfigStub())
