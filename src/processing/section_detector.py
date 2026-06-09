@@ -32,12 +32,13 @@ class SectionDetector:
     
     def _load_section_mappings(self, config_path: Optional[str] = None):
         """Load section mappings from configuration file."""
+        # Lazy import keeps this module importable without the src package root
+        from src.utils.section_mappings import (
+            get_mappings_file, DEFAULT_SECTION_MAPPINGS, DEFAULT_NUMBER_RULES)
+
         if config_path is None:
-            # Use centralized cross-platform app data directory
-            from src.utils.config import get_app_data_dir
-            app_dir = get_app_data_dir()
-            config_path = app_dir / "section_mappings.json"
-        
+            config_path = get_mappings_file()
+
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
@@ -46,21 +47,9 @@ class SectionDetector:
             logger.debug(f"Loaded section mappings from {config_path}")
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"Could not load section mappings: {e}. Using defaults.")
-            # Fallback to hardcoded mappings
-            self.section_mappings = {
-                'vers': 'Verse', 'verse': 'Verse',
-                'refräng': 'Chorus', 'chorus': 'Chorus',
-                'brygga': 'Bridge', 'bridge': 'Bridge',
-                'förrefräng': 'Pre-Chorus', 'pre-chorus': 'Pre-Chorus',
-                'intro': 'Intro', 'outro': 'Outro', 'slut': 'Outro',
-                'tag': 'Tag', 'ending': 'Ending'
-            }
-            self.number_rules = {
-                'preserve_numbers': True,
-                'start_from_one': True,
-                'format': '{section_name} {number}'
-            }
-        
+            self.section_mappings = dict(DEFAULT_SECTION_MAPPINGS)
+            self.number_rules = dict(DEFAULT_NUMBER_RULES)
+
         # Create list of all known section markers for pattern matching
         self.section_markers = list(self.section_mappings.keys())
     

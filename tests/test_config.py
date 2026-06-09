@@ -272,15 +272,15 @@ class TestSettingsWindowMigration(unittest.TestCase):
 
     def test_section_mappings_migration_semantic_version(self):
         """Test that section mappings migration uses semantic versioning."""
-        # Import here to avoid GUI initialization issues
-        with patch('utils.config.get_app_data_dir', return_value=Path(self.temp_dir)):
-            # Create a mock settings window just to test migrate_config
-            from gui.settings_window import SettingsWindow
+        # Migration logic lives in the shared section_mappings module
+        # (settings_window delegates to it); verify semantic versioning there.
+        from src.utils import section_mappings
+        self.assertTrue(hasattr(section_mappings, 'pkg_version'))
 
-            # We can't fully instantiate SettingsWindow without Tk, so test the logic directly
-            # by checking that packaging.version is imported
-            import gui.settings_window as sw
-            self.assertTrue(hasattr(sw, 'pkg_version'))
+        # And the settings window must use the shared module
+        window_path = Path(__file__).parent.parent / 'src' / 'gui' / 'settings_window.py'
+        source = open(window_path, encoding='utf-8').read()
+        self.assertIn('from src.utils import section_mappings', source)
 
 
 class TestCrossplatformPaths(unittest.TestCase):
@@ -303,27 +303,35 @@ class TestCrossplatformPaths(unittest.TestCase):
         self.assertIn('get_app_data_dir()', source)
 
     def test_section_detector_uses_centralized_function(self):
-        """Test that section_detector uses get_app_data_dir."""
+        """Test that section_detector resolves paths via the shared mappings module."""
         detector_path = Path(__file__).parent.parent / 'src' / 'processing' / 'section_detector.py'
-        source = open(detector_path).read()
-        self.assertIn('get_app_data_dir', source)
+        source = open(detector_path, encoding='utf-8').read()
+        self.assertIn('from src.utils.section_mappings import', source)
+        self.assertIn('get_mappings_file', source)
 
     def test_settings_window_uses_centralized_function(self):
-        """Test that settings_window uses get_app_data_dir."""
+        """Test that settings_window uses the shared mappings module."""
         window_path = Path(__file__).parent.parent / 'src' / 'gui' / 'settings_window.py'
-        source = open(window_path).read()
+        source = open(window_path, encoding='utf-8').read()
+        self.assertIn('from src.utils import section_mappings', source)
+
+    def test_section_mappings_module_uses_centralized_function(self):
+        """Test that section_mappings uses get_app_data_dir."""
+        module_path = Path(__file__).parent.parent / 'src' / 'utils' / 'section_mappings.py'
+        source = open(module_path, encoding='utf-8').read()
         self.assertIn('from src.utils.config import get_app_data_dir', source)
+        self.assertIn('get_app_data_dir()', source)
 
 
 class TestVersionInMain(unittest.TestCase):
     """Test that main.py uses centralized version."""
 
     def test_main_imports_version(self):
-        """Test that main.py imports version from centralized module."""
+        """Test that main.py creates default mappings via the shared module."""
         main_path = Path(__file__).parent.parent / 'src' / 'main.py'
-        source = open(main_path).read()
-        self.assertIn('from src.version import SECTION_MAPPINGS_SCHEMA_VERSION', source)
-        self.assertIn('SECTION_MAPPINGS_SCHEMA_VERSION', source)
+        source = open(main_path, encoding='utf-8').read()
+        self.assertIn('from src.utils.section_mappings import ensure_mappings_file', source)
+        self.assertIn('ensure_mappings_file()', source)
 
     def test_main_does_not_hardcode_version(self):
         """Test that main.py doesn't have hardcoded version strings."""

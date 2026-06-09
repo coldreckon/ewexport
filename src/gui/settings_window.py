@@ -6,19 +6,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional
-import shutil
-from src.version import SECTION_MAPPINGS_SCHEMA_VERSION
-from src.utils.config import get_app_data_dir
-from packaging import version as pkg_version
+from src.utils import section_mappings
 
 logger = logging.getLogger(__name__)
 
 class SettingsWindow:
-    CURRENT_VERSION = SECTION_MAPPINGS_SCHEMA_VERSION  # Imported from centralized version module
 
     def __init__(self, parent_window=None):
         self.parent = parent_window
@@ -31,12 +25,9 @@ class SettingsWindow:
             self.window.transient(parent_window.root)
             self.window.grab_set()
 
-        # Load current mappings from app data directory (cross-platform)
-        app_dir = get_app_data_dir()
-        self.config_file = app_dir / "section_mappings.json"
+        # Load current mappings (file lives in the app data directory)
         self.mappings = {}
         self.original_mappings = {}
-        self.ensure_config_exists()
         self.load_mappings()
         
         # Track changes
@@ -438,160 +429,31 @@ class SettingsWindow:
                                   "Are you sure you want to continue?"):
             return
         
-        # Get default mappings from default config
-        default_config = self.get_default_config()
-        self.mappings = default_config['section_mappings']
-        
+        self.mappings = dict(section_mappings.DEFAULT_SECTION_MAPPINGS)
+
         self.refresh_mappings_tree()
         self.has_changes = True
         self.update_preview()
-        
+
         messagebox.showinfo("Reset Complete", "Mappings have been reset to defaults.")
-    
-    def ensure_config_exists(self):
-        """Ensure config file exists with default values for new users"""
-        if not self.config_file.exists():
-            # Create default config in APPDATA
-            default_config = self.get_default_config()
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, indent=2, ensure_ascii=False)
-            logger.info(f"Created default config at {self.config_file}")
-    
-    def get_default_config(self):
-        """Get default configuration structure"""
-        return {
-            "version": self.CURRENT_VERSION,
-            "section_mappings": {
-                "vers": "Verse",
-                "verse": "Verse",
-                "refräng": "Chorus",
-                "chorus": "Chorus",
-                "brygga": "Bridge",
-                "bridge": "Bridge",
-                "förrefräng": "Pre-Chorus",
-                "pre-chorus": "Pre-Chorus",
-                "prechorus": "Pre-Chorus",
-                "intro": "Intro",
-                "outro": "Outro",
-                "slut": "Outro",
-                "tag": "Tag",
-                "ending": "Ending"
-            },
-            "number_mapping_rules": {
-                "preserve_numbers": True,
-                "start_from_one": True,
-                "format": "{section_name} {number}"
-            },
-            "gui_settings": {
-                "editable_via_gui": True,
-                "description": "Section name mappings from Swedish to English for ProPresenter export"
-            },
-            "notes": [
-                "This file maps Swedish section names to English equivalents",
-                "Numbers are preserved: 'vers 1' becomes 'Verse 1'",
-                "Case-insensitive matching is applied",
-                "These mappings can be edited from Edit -> Section Mappings in the GUI"
-            ]
-        }
-    
-    def migrate_config(self, data, from_version):
-        """Migrate config from older version to current version.
 
-        Uses semantic version comparison to handle all version ranges properly.
-        """
-        try:
-            current_ver = pkg_version.parse(from_version) if from_version else pkg_version.parse("0.0.0")
-        except Exception:
-            # If version parsing fails, assume very old version
-            logger.warning(f"Could not parse version '{from_version}', treating as 0.0.0")
-            current_ver = pkg_version.parse("0.0.0")
-
-        # Migration from pre-1.1.0 to 1.1.0: Add version field if missing
-        if current_ver < pkg_version.parse("1.1.0"):
-            logger.info(f"Applying section mappings migration: pre-1.1.0 -> 1.1.0")
-            data["version"] = self.CURRENT_VERSION
-            # Ensure all default fields exist
-            if "notes" not in data:
-                data["notes"] = self.get_default_config()["notes"]
-
-        # Migration from pre-1.2.0 to 1.2.0
-        if current_ver < pkg_version.parse("1.2.0"):
-            logger.info(f"Applying section mappings migration: pre-1.2.0 -> 1.2.0")
-            # Update version to current
-            data["version"] = self.CURRENT_VERSION
-
-        # Future migrations would follow the same pattern:
-        # if current_ver < pkg_version.parse("1.3.0"):
-        #     # Migrate from pre-1.3.0 to 1.3.0
-
-        return data
-    
     def load_mappings(self):
-        """Load mappings from config file with version handling"""
+        """Load mappings via the shared section_mappings module"""
         try:
-            if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                    # Check version and migrate if needed
-                    file_version = data.get('version', '1.0.0')
-                    if file_version != self.CURRENT_VERSION:
-                        data = self.migrate_config(data, file_version)
-                        # Save migrated config
-                        with open(self.config_file, 'w', encoding='utf-8') as fw:
-                            json.dump(data, fw, indent=2, ensure_ascii=False)
-                    
-                    self.mappings = data.get('section_mappings', {})
-                    # Convert keys to lowercase for consistency
-                    self.mappings = {k.lower(): v for k, v in self.mappings.items()}
-            else:
-                # Use defaults if file doesn't exist (shouldn't happen now)
-                self.reset_to_defaults()
-            
-            # Store original for comparison
+            self.mappings = section_mappings.load_mappings()
             self.original_mappings = self.mappings.copy()
-            
         except Exception as e:
             messagebox.showerror("Load Error", f"Failed to load mappings:\n{str(e)}")
-            self.reset_to_defaults()
-    
+            self.mappings = dict(section_mappings.DEFAULT_SECTION_MAPPINGS)
+            self.original_mappings = self.mappings.copy()
+
     def save_mappings(self):
-        """Save mappings to config file"""
+        """Save mappings via the shared section_mappings module"""
         try:
-            # Load existing config to preserve other settings
-            if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            else:
-                data = {}
-            
-            # Update version and section mappings
-            data['version'] = self.CURRENT_VERSION
-            data['section_mappings'] = self.mappings
-            
-            # Ensure other required fields exist
-            if 'number_mapping_rules' not in data:
-                data['number_mapping_rules'] = {
-                    "preserve_numbers": True,
-                    "start_from_one": True,
-                    "format": "{section_name} {number}"
-                }
-            
-            if 'gui_settings' not in data:
-                data['gui_settings'] = {
-                    "editable_via_gui": True,
-                    "description": "Section name mappings from Swedish to English for ProPresenter export"
-                }
-            
-            # Save to APPDATA config file (folder should already exist)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            
+            section_mappings.save_mappings(self.mappings)
             self.original_mappings = self.mappings.copy()
             self.has_changes = False
-            
             return True
-            
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save mappings:\n{str(e)}")
             return False
