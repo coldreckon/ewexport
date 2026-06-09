@@ -194,8 +194,9 @@ class MainWindow:
         self._setup_preview_panel(preview_frame)
         self.paned.add(preview_frame, weight=1)
 
-        # Restore saved sash position after layout is computed
-        self.root.after(100, self._restore_sash_position)
+        # Restore saved sash position once the window layout has settled
+        # (CTk applies root geometry lazily; see _restore_sash_position)
+        self.root.after(300, self._restore_sash_position)
 
         # Bind click event for checkbox toggle
         self.tree.bind('<ButtonRelease-1>', self.on_item_click)
@@ -924,14 +925,42 @@ GitHub: https://github.com/karllinder/ewexport"""
         except (tk.TclError, IndexError):
             pass
 
-    def _restore_sash_position(self):
-        """Restore saved sash position"""
-        saved = self.config.get('song_list.preview_sash_position')
-        if saved is not None and int(saved) > 0:
+    def _restore_sash_position(self, attempt=0):
+        """Restore saved sash position once the paned window has real size.
+
+        The CTk root applies its geometry lazily (~200ms after startup), and
+        the relayout that follows collapses the first pane to zero width.
+        Wait until the paned widget is mapped with a real width, then place
+        the sash and reapply once in case a late layout pass overrides it.
+        """
+        try:
+            width = self.paned.winfo_width()
+            if (not self.paned.winfo_ismapped() or width <= 1) and attempt < 50:
+                self.root.after(50, lambda: self._restore_sash_position(attempt + 1))
+                return
+
+            saved = self.config.get('song_list.preview_sash_position')
             try:
-                self.paned.sashpos(0, int(saved))
-            except (tk.TclError, ValueError):
-                pass
+                pos = int(saved) if saved else 0
+            except (TypeError, ValueError):
+                pos = 0
+            if pos <= 0:
+                pos = int(width * 0.7)  # default split: song list 70% / preview 30%
+            # Keep both panes visible regardless of what was saved
+            pos = max(200, min(pos, width - 150))
+
+            self.paned.sashpos(0, pos)
+            self.root.after(200, lambda: self._reapply_sash_position(pos))
+        except tk.TclError:
+            pass
+
+    def _reapply_sash_position(self, pos):
+        """Reapply the sash position after the final startup layout pass"""
+        try:
+            if self.paned.sashpos(0) != pos:
+                self.paned.sashpos(0, pos)
+        except tk.TclError:
+            pass
 
     def clear_search(self):
         """Clear the search field and show all songs"""
