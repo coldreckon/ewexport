@@ -57,6 +57,10 @@ output/
 # Test and debug outputs
 test_exports/
 debug_export_test/
+test_output/
+
+# Accidental Windows device-name files
+nul
 
 # Test coverage
 htmlcov/
