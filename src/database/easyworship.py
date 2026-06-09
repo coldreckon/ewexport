@@ -90,7 +90,8 @@ class EasyWorshipDatabase:
             conn.close()
             
             return True
-        except Exception:
+        except (sqlite3.Error, OSError) as e:
+            logger.warning(f"Database validation failed for {self.db_path}: {e}")
             return False
     
     def get_all_songs(self) -> List[Dict[str, Any]]:
@@ -148,7 +149,8 @@ class EasyWorshipDatabase:
             count = cursor.fetchone()[0]
             conn.close()
             return count
-        except Exception:
+        except (sqlite3.Error, OSError) as e:
+            logger.warning(f"Could not count songs in {self.songs_db}: {e}")
             return 0
     
     def get_song_with_processed_lyrics(self, song_rowid: int, 

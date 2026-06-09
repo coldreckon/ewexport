@@ -937,8 +937,8 @@ GitHub: https://github.com/karllinder/ewexport"""
                     history = data.get('search_history', [])
                     for item in history[-10:]:  # Keep last 10
                         self.search_history.append(item)
-            except Exception:
-                pass  # Ignore errors loading history
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Could not load search history: {e}")
     
     def save_search_history(self):
         """Save search history to settings file"""
@@ -949,8 +949,8 @@ GitHub: https://github.com/karllinder/ewexport"""
         try:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump({'search_history': list(self.search_history)}, f, indent=2)
-        except Exception:
-            pass  # Ignore errors saving history
+        except OSError as e:
+            logger.warning(f"Could not save search history: {e}")
     
     def run(self):
         # Set initial search history dropdown values
