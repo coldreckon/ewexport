@@ -34,7 +34,8 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "striprtf>=1.6",
+        "striprtf>=0.0.29",
+        "packaging>=23.0",
     ],
     entry_points={
         "console_scripts": [

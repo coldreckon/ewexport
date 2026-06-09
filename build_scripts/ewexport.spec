@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
 
 a = Analysis(
@@ -35,5 +36,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='version_info.py',
+    # Resolve relative to the spec file, not the build cwd
+    version=os.path.join(SPECPATH, 'version_info.py'),
 )

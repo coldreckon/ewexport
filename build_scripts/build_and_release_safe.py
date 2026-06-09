@@ -19,15 +19,10 @@ if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 def get_version():
-    """Get version from setup.py"""
-    setup_py = Path('setup.py')
-    if setup_py.exists():
-        with open(setup_py, 'r', encoding='utf-8') as f:
-            content = f.read()
-            for line in content.split('\n'):
-                if 'VERSION = ' in line:
-                    return line.split('"')[1]
-    return "unknown"
+    """Get version from the centralized version module"""
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+    from version import __version__
+    return __version__
 
 def calculate_sha256(file_path):
     """Calculate SHA256 hash of file"""
