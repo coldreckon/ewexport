@@ -11,10 +11,14 @@ import threading
 import logging
 from typing import List, Optional, Dict, Any
 from collections import deque
+
+import customtkinter as ctk
+
 from src.database.easyworship import EasyWorshipDatabase
 from src.export.propresenter import ProPresenter6Exporter, DuplicateDecision
+from src.gui import theme
 from src.gui.settings_window import SettingsWindow
-from src.gui.dialogs import DuplicateFileDialog, ExportOptionsDialog
+from src.gui.dialogs import DuplicateFileDialog, ExportOptionsDialog, section_frame
 from src.utils.config import get_config
 from src.utils.update_checker import UpdateChecker
 from src.version import __version__, RELEASE_DATE, RELEASE_YEAR
@@ -23,12 +27,16 @@ logger = logging.getLogger(__name__)
 
 class MainWindow:
     def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("EasyWorship to ProPresenter Converter")
-        
-        # Initialize config manager
+        # Initialize config manager (needed for the saved theme)
         self.config = get_config()
-        
+
+        theme.init_appearance(self.config)
+        self.root = ctk.CTk()
+        self.root.title("EasyWorship to ProPresenter Converter")
+
+        # Style the ttk widgets (Treeview, PanedWindow) to match the theme
+        theme.apply_ttk_styles()
+
         # Load and apply window geometry
         self._apply_window_geometry()
         
@@ -65,76 +73,86 @@ class MainWindow:
         
     def setup_ui(self):
         """Build the main GUI interface"""
-        # Create menu bar
+        # Create menu bar (native tk.Menu - CustomTkinter has no menu bar)
         self.create_menu_bar()
-        
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
+
+        main_frame = ctk.CTkFrame(self.root, fg_color='transparent')
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=10)
+
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
+        main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(1, weight=1)
-        
+
         # Database selection frame
-        db_frame = ttk.LabelFrame(main_frame, text="EasyWorship Database", padding="10")
-        db_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
-        db_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(db_frame, text="Database Path:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        path_entry = ttk.Entry(db_frame, textvariable=self.db_path, width=50)
-        path_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
-        
-        browse_btn = ttk.Button(db_frame, text="Browse...", command=self.browse_database)
-        browse_btn.grid(row=0, column=2, padx=(5, 0))
-        
-        load_btn = ttk.Button(db_frame, text="Load Songs", command=self.load_songs)
-        load_btn.grid(row=0, column=3, padx=(5, 0))
-        
+        db_frame = section_frame(main_frame, "EasyWorship Database")
+        db_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+
+        db_row = ctk.CTkFrame(db_frame, fg_color='transparent')
+        db_row.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        ctk.CTkLabel(db_row, text="Database Path:").pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkEntry(db_row, textvariable=self.db_path).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        ctk.CTkButton(db_row, text="Browse...", width=90,
+                      command=self.browse_database).pack(side=tk.LEFT, padx=(5, 0))
+        ctk.CTkButton(db_row, text="Load Songs", width=100,
+                      command=self.load_songs).pack(side=tk.LEFT, padx=(5, 0))
+
         # Song count label
-        self.status_label = ttk.Label(db_frame, text="No database loaded")
-        self.status_label.grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
-        
+        self.status_label = ctk.CTkLabel(db_frame, text="No database loaded", anchor='w')
+        self.status_label.pack(fill=tk.X, padx=10, pady=(0, 8))
+
         # Song list frame
-        list_frame = ttk.LabelFrame(main_frame, text="Songs", padding="10")
-        list_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
-        list_frame.columnconfigure(0, weight=1)
-        list_frame.rowconfigure(2, weight=1)  # Changed to row 2 for tree
-        
+        list_frame = section_frame(main_frame, "Songs")
+        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+
+        list_inner = ctk.CTkFrame(list_frame, fg_color='transparent')
+        list_inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        list_inner.columnconfigure(0, weight=1)
+        list_inner.rowconfigure(2, weight=1)
+
         # Search frame
-        search_frame = ttk.Frame(list_frame)
+        search_frame = ctk.CTkFrame(list_inner, fg_color='transparent')
         search_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
-        search_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Search combobox with history
-        self.search_combo = ttk.Combobox(search_frame, textvariable=self.search_var, width=30)
-        self.search_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self.search_combo.bind('<Return>', self.add_to_search_history)
-        
+
+        ctk.CTkLabel(search_frame, text="Search:").pack(side=tk.LEFT, padx=(0, 5))
+
+        # Search combobox with history (typing updates search_var live)
+        self.search_combo = ctk.CTkComboBox(search_frame, variable=self.search_var,
+                                            values=[], width=280)
+        self.search_combo.set('')
+        self.search_combo.pack(side=tk.LEFT, padx=(0, 10))
+        # Bind on the inner entry: CTkComboBox.bind does not reach key events
+        self.search_combo._entry.bind('<Return>', self.add_to_search_history)
+
         # Clear search button
-        ttk.Button(search_frame, text="Clear", command=self.clear_search).pack(side=tk.LEFT, padx=(0, 10))
-        
+        ctk.CTkButton(search_frame, text="Clear", width=70,
+                      command=self.clear_search).pack(side=tk.LEFT, padx=(0, 10))
+
         # Result count label
-        self.result_count_label = ttk.Label(search_frame, text="")
+        self.result_count_label = ctk.CTkLabel(search_frame, text="")
         self.result_count_label.pack(side=tk.LEFT, padx=(10, 0))
-        
+
         # Selection buttons
-        button_frame = ttk.Frame(list_frame)
+        button_frame = ctk.CTkFrame(list_inner, fg_color='transparent')
         button_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
-        
-        ttk.Button(button_frame, text="Select All", command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Select None", command=self.select_none).pack(side=tk.LEFT, padx=(0, 5))
-        
-        self.selected_count_label = ttk.Label(button_frame, text="0 songs selected")
+
+        ctk.CTkButton(button_frame, text="Select All", width=100,
+                      command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(button_frame, text="Select None", width=100,
+                      fg_color='transparent', border_width=1,
+                      command=self.select_none).pack(side=tk.LEFT, padx=(0, 5))
+
+        self.selected_count_label = ctk.CTkLabel(button_frame, text="0 songs selected")
         self.selected_count_label.pack(side=tk.LEFT, padx=(20, 0))
-        
-        # PanedWindow to split song list and preview
-        self.paned = ttk.PanedWindow(list_frame, orient=tk.HORIZONTAL)
+
+        # PanedWindow to split song list and preview (ttk - no CTk equivalent)
+        self.paned = ttk.PanedWindow(list_inner, orient=tk.HORIZONTAL)
         self.paned.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # Left pane: Treeview with scrollbars
+        # Left pane: Treeview with scrollbars (ttk Treeview kept for
+        # performance with 1000+ songs; themed via theme.apply_ttk_styles)
         tree_frame = ttk.Frame(self.paned)
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(0, weight=1)
@@ -186,41 +204,43 @@ class MainWindow:
         self.tree.bind('<<TreeviewSelect>>', self._on_tree_select)
         
         # Export frame
-        export_frame = ttk.LabelFrame(main_frame, text="Export Options", padding="10")
-        export_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
-        export_frame.columnconfigure(1, weight=1)
-        
+        export_frame = section_frame(main_frame, "Export")
+        export_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 0))
+
         # Output path selection
-        ttk.Label(export_frame, text="Output Path:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        output_entry = ttk.Entry(export_frame, textvariable=self.output_path, width=50)
-        output_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
-        
-        browse_output_btn = ttk.Button(export_frame, text="Browse...", command=self.browse_output_path)
-        browse_output_btn.grid(row=0, column=2, padx=(5, 0))
-        
+        output_row = ctk.CTkFrame(export_frame, fg_color='transparent')
+        output_row.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        ctk.CTkLabel(output_row, text="Output Path:").pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkEntry(output_row, textvariable=self.output_path).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        ctk.CTkButton(output_row, text="Browse...", width=90,
+                      command=self.browse_output_path).pack(side=tk.LEFT, padx=(5, 0))
+
         # Progress section
-        progress_frame = ttk.Frame(export_frame)
-        progress_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
-        progress_frame.columnconfigure(0, weight=1)
-        
-        # Progress bar
-        self.progress = ttk.Progressbar(progress_frame, mode='determinate')
-        self.progress.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
-        
+        progress_frame = ctk.CTkFrame(export_frame, fg_color='transparent')
+        progress_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
+
+        # Progress bar (CTkProgressBar uses a 0.0-1.0 scale)
+        self.progress = ctk.CTkProgressBar(progress_frame, mode='determinate')
+        self.progress.set(0)
+        self.progress.pack(fill=tk.X, pady=(0, 5))
+
         # Progress label
-        self.progress_label = ttk.Label(progress_frame, text="Ready to export")
-        self.progress_label.grid(row=1, column=0, sticky=tk.W)
-        
+        self.progress_label = ctk.CTkLabel(progress_frame, text="Ready to export", anchor='w')
+        self.progress_label.pack(fill=tk.X)
+
         # Export button
-        button_frame = ttk.Frame(export_frame)
-        button_frame.grid(row=2, column=0, columnspan=3, pady=(10, 0))
-        
-        self.export_btn = ttk.Button(button_frame, text="Export Selected Songs", 
-                                     command=self.start_export, state='disabled')
+        button_frame = ctk.CTkFrame(export_frame, fg_color='transparent')
+        button_frame.pack(pady=(8, 10))
+
+        self.export_btn = ctk.CTkButton(button_frame, text="Export Selected Songs",
+                                        width=180, command=self.start_export, state='disabled')
         self.export_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.cancel_btn = ttk.Button(button_frame, text="Cancel Export", 
-                                     command=self.cancel_export, state='disabled')
+
+        self.cancel_btn = ctk.CTkButton(button_frame, text="Cancel Export", width=120,
+                                        fg_color='transparent', border_width=1,
+                                        command=self.cancel_export, state='disabled')
         self.cancel_btn.pack(side=tk.LEFT)
         
     def create_menu_bar(self):
@@ -244,6 +264,17 @@ class MainWindow:
         edit_menu.add_separator()
         edit_menu.add_command(label="Section Mappings...", command=self.open_settings)
         edit_menu.add_command(label="Export Options...", command=self.open_export_options)
+
+        # View menu (appearance)
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        self._theme_var = tk.StringVar(value=(self.config.get('app.theme', 'system') or 'system').lower())
+        if self._theme_var.get() not in theme.APPEARANCE_MODES:
+            self._theme_var.set('system')
+        for mode, label in (('light', 'Light'), ('dark', 'Dark'), ('system', 'System')):
+            view_menu.add_radiobutton(
+                label=f"{label} Theme", value=mode, variable=self._theme_var,
+                command=lambda m=mode: theme.set_appearance(self.config, m))
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -287,7 +318,7 @@ Features:
 • Batch export with progress tracking
 • Full Swedish character support
 
-© {RELEASE_YEAR} - Created with Python and Tkinter
+© {RELEASE_YEAR} - Created with Python and CustomTkinter
 GitHub: https://github.com/karllinder/ewexport"""
         
         messagebox.showinfo("About", about_text)
@@ -407,8 +438,8 @@ GitHub: https://github.com/karllinder/ewexport"""
             else:
                 self.display_songs(self.filtered_songs)
             
-            self.status_label.config(text=f"Loaded {song_count} songs from database")
-            self.export_btn.config(state='normal' if song_count > 0 else 'disabled')
+            self.status_label.configure(text=f"Loaded {song_count} songs from database")
+            self.export_btn.configure(state='normal' if song_count > 0 else 'disabled')
             self.update_selected_count()
             self.update_result_count()
             
@@ -464,7 +495,7 @@ GitHub: https://github.com/karllinder/ewexport"""
     def update_selected_count(self):
         """Update the selected songs count label"""
         count = len(self.selected_songs)
-        self.selected_count_label.config(text=f"{count} song{'s' if count != 1 else ''} selected")
+        self.selected_count_label.configure(text=f"{count} song{'s' if count != 1 else ''} selected")
     
     def set_default_output_path(self):
         """Set default output path"""
@@ -503,10 +534,10 @@ GitHub: https://github.com/karllinder/ewexport"""
         # Start export in background thread
         self.export_in_progress = True
         self.export_cancel_event.clear()  # Reset cancel event for new export
-        self.export_btn.config(state='disabled')
-        self.cancel_btn.config(state='normal')
-        self.progress.config(mode='determinate', value=0)
-        self.progress_label.config(text="Preparing export...")
+        self.export_btn.configure(state='disabled')
+        self.cancel_btn.configure(state='normal')
+        self.progress.set(0)
+        self.progress_label.configure(text="Preparing export...")
 
         self.export_thread = threading.Thread(target=self.export_worker, daemon=True)
         self.export_thread.start()
@@ -589,12 +620,12 @@ GitHub: https://github.com/karllinder/ewexport"""
         def update_ui():
             if total > 0:
                 progress_percent = (current / total) * 100
-                self.progress.config(value=progress_percent)
+                self.progress.set(current / total)
             
             if current < total:
-                self.progress_label.config(text=f"Exporting: {song_title} ({current + 1}/{total})")
+                self.progress_label.configure(text=f"Exporting: {song_title} ({current + 1}/{total})")
             else:
-                self.progress_label.config(text="Export complete")
+                self.progress_label.configure(text="Export complete")
         
         self.root.after(0, update_ui)
     
@@ -604,14 +635,14 @@ GitHub: https://github.com/karllinder/ewexport"""
             skipped = []
 
         self.export_in_progress = False
-        self.export_btn.config(state='normal')
-        self.cancel_btn.config(state='disabled')
+        self.export_btn.configure(state='normal')
+        self.cancel_btn.configure(state='disabled')
 
         # Check if export was cancelled
         was_cancelled = self.export_cancel_event.is_set()
         if was_cancelled:
-            self.progress.config(value=0)
-            self.progress_label.config(text="Export cancelled")
+            self.progress.set(0)
+            self.progress_label.configure(text="Export cancelled")
             success_count = len(successful)
             skip_count = len(skipped)
             message = f"Export was cancelled.\n\n"
@@ -622,7 +653,7 @@ GitHub: https://github.com/karllinder/ewexport"""
             messagebox.showinfo("Export Cancelled", message)
             return
 
-        self.progress.config(value=100)
+        self.progress.set(1)
 
         # Show results
         success_count = len(successful)
@@ -673,15 +704,15 @@ GitHub: https://github.com/karllinder/ewexport"""
             # Clear selection even if some exports failed
             self.select_none()
 
-        self.progress_label.config(text="Ready to export")
+        self.progress_label.configure(text="Ready to export")
     
     def export_error(self, error_message: str):
         """Handle export error"""
         self.export_in_progress = False
-        self.export_btn.config(state='normal')
-        self.cancel_btn.config(state='disabled')
-        self.progress.config(value=0)
-        self.progress_label.config(text="Export failed")
+        self.export_btn.configure(state='normal')
+        self.cancel_btn.configure(state='disabled')
+        self.progress.set(0)
+        self.progress_label.configure(text="Export failed")
         
         messagebox.showerror("Export Error", error_message)
     
@@ -691,9 +722,9 @@ GitHub: https://github.com/karllinder/ewexport"""
             # Signal the export thread to stop
             self.export_cancel_event.set()
             self.export_in_progress = False
-            self.export_btn.config(state='normal')
-            self.cancel_btn.config(state='disabled')
-            self.progress_label.config(text="Cancelling export...")
+            self.export_btn.configure(state='normal')
+            self.cancel_btn.configure(state='disabled')
+            self.progress_label.configure(text="Cancelling export...")
             # Note: The export thread will check the cancel event and stop gracefully
     
     def on_search_changed(self, *args):
@@ -752,9 +783,9 @@ GitHub: https://github.com/karllinder/ewexport"""
         shown = len(self.filtered_songs)
         
         if self.search_var.get():
-            self.result_count_label.config(text=f"Showing {shown} of {total} songs")
+            self.result_count_label.configure(text=f"Showing {shown} of {total} songs")
         else:
-            self.result_count_label.config(text=f"Total: {total} songs")
+            self.result_count_label.configure(text=f"Total: {total} songs")
     
     def _setup_preview_panel(self, parent):
         """Create the preview panel with metadata labels and lyrics text widget"""
@@ -762,54 +793,49 @@ GitHub: https://github.com/karllinder/ewexport"""
         parent.rowconfigure(1, weight=1)
 
         # Song Details section
-        details_frame = ttk.LabelFrame(parent, text="Song Details", padding="5")
+        details_frame = section_frame(parent, "Song Details")
         details_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=2, pady=(0, 5))
-        details_frame.columnconfigure(1, weight=1)
+
+        details_grid = ctk.CTkFrame(details_frame, fg_color='transparent')
+        details_grid.pack(fill=tk.X, padx=10, pady=(0, 8))
+        details_grid.columnconfigure(1, weight=1)
 
         self._preview_title_var = tk.StringVar(value="")
         self._preview_author_var = tk.StringVar(value="")
         self._preview_copyright_var = tk.StringVar(value="")
         self._preview_ccli_var = tk.StringVar(value="")
 
-        ttk.Label(details_frame, text="Title:", font=('TkDefaultFont', 9, 'bold')).grid(
+        bold = ctk.CTkFont(size=12, weight='bold')
+        ctk.CTkLabel(details_grid, text="Title:", font=bold).grid(
             row=0, column=0, sticky=tk.W, padx=(0, 5))
-        ttk.Label(details_frame, textvariable=self._preview_title_var,
-                  font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=1, sticky=tk.W)
+        ctk.CTkLabel(details_grid, textvariable=self._preview_title_var,
+                     font=bold, anchor='w').grid(row=0, column=1, sticky=tk.W)
 
-        ttk.Label(details_frame, text="Author:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5))
-        ttk.Label(details_frame, textvariable=self._preview_author_var).grid(row=1, column=1, sticky=tk.W)
+        ctk.CTkLabel(details_grid, text="Author:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5))
+        ctk.CTkLabel(details_grid, textvariable=self._preview_author_var,
+                     anchor='w').grid(row=1, column=1, sticky=tk.W)
 
-        ttk.Label(details_frame, text="Copyright:").grid(row=2, column=0, sticky=tk.W, padx=(0, 5))
-        ttk.Label(details_frame, textvariable=self._preview_copyright_var).grid(row=2, column=1, sticky=tk.W)
+        ctk.CTkLabel(details_grid, text="Copyright:").grid(row=2, column=0, sticky=tk.W, padx=(0, 5))
+        ctk.CTkLabel(details_grid, textvariable=self._preview_copyright_var,
+                     anchor='w').grid(row=2, column=1, sticky=tk.W)
 
-        ttk.Label(details_frame, text="CCLI/Ref:").grid(row=3, column=0, sticky=tk.W, padx=(0, 5))
-        ttk.Label(details_frame, textvariable=self._preview_ccli_var).grid(row=3, column=1, sticky=tk.W)
+        ctk.CTkLabel(details_grid, text="CCLI/Ref:").grid(row=3, column=0, sticky=tk.W, padx=(0, 5))
+        ctk.CTkLabel(details_grid, textvariable=self._preview_ccli_var,
+                     anchor='w').grid(row=3, column=1, sticky=tk.W)
 
         # Lyrics Preview section
-        lyrics_frame = ttk.LabelFrame(parent, text="Lyrics Preview", padding="5")
+        lyrics_frame = section_frame(parent, "Lyrics Preview")
         lyrics_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=2)
-        lyrics_frame.columnconfigure(0, weight=1)
-        lyrics_frame.rowconfigure(0, weight=1)
 
-        self._preview_text = tk.Text(lyrics_frame, wrap=tk.WORD, state='disabled',
-                                     font=('TkDefaultFont', 10))
-        self._preview_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self._preview_text = ctk.CTkTextbox(lyrics_frame, wrap=tk.WORD, state='disabled')
+        self._preview_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        preview_scroll = ttk.Scrollbar(lyrics_frame, orient="vertical",
-                                       command=self._preview_text.yview)
-        preview_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        self._preview_text.configure(yscrollcommand=preview_scroll.set)
-
-        # Configure text tags for formatting
-        self._preview_text.tag_configure('section_header',
-                                         font=('TkDefaultFont', 10, 'bold'),
-                                         foreground='#1a5fb4',
-                                         spacing1=10, spacing3=4)
-        self._preview_text.tag_configure('lyrics',
-                                         font=('TkDefaultFont', 10))
-        self._preview_text.tag_configure('no_content',
-                                         font=('TkDefaultFont', 10, 'italic'),
-                                         foreground='#888888')
+        # Configure text tags for formatting (CTkTextbox delegates to tk.Text)
+        self._preview_text.tag_config('section_header',
+                                      foreground='#4a9eff',
+                                      spacing1=10, spacing3=4)
+        self._preview_text.tag_config('no_content',
+                                      foreground='#888888')
 
         # Show placeholder
         self._clear_preview()
@@ -922,7 +948,7 @@ GitHub: https://github.com/karllinder/ewexport"""
     
     def update_search_combo_values(self):
         """Update the combobox dropdown with search history"""
-        self.search_combo['values'] = list(self.search_history)
+        self.search_combo.configure(values=list(self.search_history))
     
     def load_search_history(self):
         """Load search history via the config manager"""
@@ -949,9 +975,14 @@ GitHub: https://github.com/karllinder/ewexport"""
         if geometry_info:
             geometry, position, maximized = geometry_info
             if geometry and position:
-                # Combine size and position in one call
-                x, y = position.split(',')
-                self.root.geometry(f"{geometry}+{x}+{y}")
+                # Combine size and position in one call. Offsets may be
+                # negative (second monitor); Tk expects "+-1280" for x=-1280
+                # (a bare "-1280" would anchor to the right screen edge).
+                try:
+                    x, y = (int(v) for v in position.split(','))
+                    self.root.geometry(f"{geometry}+{x}+{y}")
+                except ValueError:
+                    self.root.geometry(geometry)
             elif geometry:
                 self.root.geometry(geometry)
             if maximized:
@@ -971,11 +1002,14 @@ GitHub: https://github.com/karllinder/ewexport"""
             self.root.update_idletasks()
         
         geometry = self.root.geometry()
-        # Parse geometry string (e.g., "900x700+100+50")
-        match = re.match(r'(\d+x\d+)\+(\d+)\+(\d+)', geometry)
+        # Parse geometry string (e.g., "900x700+100+50" or "900x700+-1280+50"
+        # on a secondary monitor - offsets can be negative)
+        match = re.match(r'(\d+x\d+)([+-]-?\d+)([+-]-?\d+)', geometry)
         if match:
             size = match.group(1)
-            position = f"{match.group(2)},{match.group(3)}"
+            x = match.group(2).lstrip('+')
+            y = match.group(3).lstrip('+')
+            position = f"{x},{y}"
             self.config.save_window_geometry('main', size, position, maximized)
         
         # Restore maximized state if needed
@@ -1033,23 +1067,25 @@ GitHub: https://github.com/karllinder/ewexport"""
     def check_for_updates_manual(self):
         """Manually check for updates from the Help menu"""
         # Show checking dialog
-        checking_dialog = tk.Toplevel(self.root)
+        checking_dialog = ctk.CTkToplevel(self.root)
         checking_dialog.title("Check for Updates")
-        checking_dialog.geometry("300x100")
+        checking_dialog.geometry("320x120")
         checking_dialog.resizable(False, False)
-        
-        # Center the dialog
         checking_dialog.transient(self.root)
-        checking_dialog.grab_set()
-        
-        ttk.Label(checking_dialog, text="Checking for updates...").pack(pady=20)
-        progress = ttk.Progressbar(checking_dialog, mode='indeterminate')
+
+        ctk.CTkLabel(checking_dialog, text="Checking for updates...").pack(pady=(20, 10))
+        progress = ctk.CTkProgressBar(checking_dialog, mode='indeterminate')
         progress.pack(pady=10, padx=20, fill=tk.X)
         progress.start()
-        
+
         def handle_update_check(update_info):
+            # Called from the update checker's worker thread - marshal
+            # all widget work back to the Tk main thread
+            self.root.after(0, show_result, update_info)
+
+        def show_result(update_info):
             checking_dialog.destroy()
-            
+
             if update_info is None:
                 messagebox.showerror(
                     "Update Check Failed",
@@ -1083,58 +1119,61 @@ GitHub: https://github.com/karllinder/ewexport"""
         """Check for updates on application startup (silent unless update available)"""
         def handle_update_check(update_info):
             if update_info and update_info.get('available'):
-                # Only show notification if update is available
-                message = self.update_checker.format_update_message(update_info)
-                
-                # Create custom dialog with "Don't show again" option
-                dialog = tk.Toplevel(self.root)
-                dialog.title("Update Available")
-                dialog.geometry("500x400")
-                dialog.resizable(False, False)
-                dialog.transient(self.root)
-                
-                # Message
-                text_widget = tk.Text(dialog, wrap=tk.WORD, height=15, width=60)
-                text_widget.pack(pady=10, padx=10)
-                text_widget.insert('1.0', message)
-                text_widget.config(state='disabled')
-                
-                # Checkbox frame
-                checkbox_frame = ttk.Frame(dialog)
-                checkbox_frame.pack(pady=5)
-                
-                check_var = tk.BooleanVar(value=True)
-                ttk.Checkbutton(
-                    checkbox_frame,
-                    text="Check for updates on startup",
-                    variable=check_var
-                ).pack()
-                
-                # Button frame
-                button_frame = ttk.Frame(dialog)
-                button_frame.pack(pady=10)
-                
-                def download_update():
-                    release_info = update_info.get('release_info', {})
-                    if release_info.get('html_url'):
-                        self.update_checker.open_specific_release(release_info['html_url'])
-                    else:
-                        self.update_checker.open_download_page()
-                    self.update_checker.set_check_on_startup(check_var.get())
-                    dialog.destroy()
-                
-                def close_dialog():
-                    self.update_checker.set_check_on_startup(check_var.get())
-                    dialog.destroy()
-                
-                ttk.Button(button_frame, text="Download Update", command=download_update).pack(side=tk.LEFT, padx=5)
-                ttk.Button(button_frame, text="Not Now", command=close_dialog).pack(side=tk.LEFT, padx=5)
-                
-                # Center the dialog
-                dialog.update_idletasks()
-                x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-                y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-                dialog.geometry(f"+{x}+{y}")
-        
+                # Called from the update checker's worker thread - marshal
+                # widget creation back to the Tk main thread
+                self.root.after(0, show_update_dialog, update_info)
+
+        def show_update_dialog(update_info):
+            message = self.update_checker.format_update_message(update_info)
+
+            # Create custom dialog with "Don't show again" option
+            dialog = ctk.CTkToplevel(self.root)
+            dialog.title("Update Available")
+            dialog.geometry("520x430")
+            dialog.resizable(False, False)
+            dialog.transient(self.root)
+
+            # Message
+            text_widget = ctk.CTkTextbox(dialog, wrap=tk.WORD)
+            text_widget.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+            text_widget.insert('1.0', message)
+            text_widget.configure(state='disabled')
+
+            check_var = tk.BooleanVar(value=True)
+            ctk.CTkCheckBox(
+                dialog,
+                text="Check for updates on startup",
+                variable=check_var
+            ).pack(pady=5)
+
+            # Button frame
+            button_frame = ctk.CTkFrame(dialog, fg_color='transparent')
+            button_frame.pack(pady=10)
+
+            def download_update():
+                release_info = update_info.get('release_info', {})
+                if release_info.get('html_url'):
+                    self.update_checker.open_specific_release(release_info['html_url'])
+                else:
+                    self.update_checker.open_download_page()
+                self.update_checker.set_check_on_startup(check_var.get())
+                dialog.destroy()
+
+            def close_dialog():
+                self.update_checker.set_check_on_startup(check_var.get())
+                dialog.destroy()
+
+            ctk.CTkButton(button_frame, text="Download Update", width=140,
+                          command=download_update).pack(side=tk.LEFT, padx=5)
+            ctk.CTkButton(button_frame, text="Not Now", width=100,
+                          fg_color='transparent', border_width=1,
+                          command=close_dialog).pack(side=tk.LEFT, padx=5)
+
+            # Center the dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+            y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+
         # Check for updates in background
         self.update_checker.check_for_updates_async(handle_update_check)
