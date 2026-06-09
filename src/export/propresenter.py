@@ -74,23 +74,23 @@ class ProPresenter6Exporter:
         """Encode text to base64 for ProPresenter fields"""
         return base64.b64encode(text.encode('utf-8')).decode('ascii')
     
+    def _get_export_font(self) -> Tuple[str, int]:
+        """Get the export font family and size, honoring formatting settings"""
+        if self.config and self.config.get('export.formatting_enabled', False) \
+                and self.config.get('export.change_font', False):
+            return (self.config.get('export.font.family', 'Arial'),
+                    self.config.get('export.font.size', 72))
+        return 'Arial', 72
+
     def create_rtf_data(self, content: str) -> str:
         """Create RTF data for text content and encode to base64"""
         # Escape special RTF characters
         content = content.replace('\\', '\\\\')
         content = content.replace('{', '\\{')
         content = content.replace('}', '\\}')
-        
-        # Get font settings from config
-        font_family = 'Arial'  # Default
-        font_size = 72  # Default
-        
-        if self.config:
-            # Check if formatting is enabled and font should be changed
-            if self.config.get('export.formatting_enabled', False) and self.config.get('export.change_font', False):
-                font_family = self.config.get('export.font.family', 'Arial')
-                font_size = self.config.get('export.font.size', 72)
-        
+
+        font_family, font_size = self._get_export_font()
+
         # Map font size to RTF size (RTF uses half-points, so multiply by 2)
         rtf_font_size = font_size * 2
         
@@ -123,17 +123,9 @@ class ProPresenter6Exporter:
         """Create Windows Flow document data and encode to base64"""
         lines = content.split('\n')
         paragraphs = []
-        
-        # Get font settings from config
-        font_family = 'Arial'  # Default
-        font_size = 72  # Default
-        
-        if self.config:
-            # Check if formatting is enabled and font should be changed
-            if self.config.get('export.formatting_enabled', False) and self.config.get('export.change_font', False):
-                font_family = self.config.get('export.font.family', 'Arial')
-                font_size = self.config.get('export.font.size', 72)
-        
+
+        font_family, font_size = self._get_export_font()
+
         for line in lines:
             # Escape XML special characters
             line = line.replace('&', '&amp;')
@@ -513,79 +505,33 @@ class ProPresenter6Exporter:
         
         return re.sub(pattern, replace_func, xml_string)
     
-    def export_song(self, song_data: Dict[str, Any], sections: List[Dict[str, str]], 
+    def _serialize_document(self, root: ET.Element) -> str:
+        """Serialize a pro6 document to pretty-printed XML with array-tag fixes"""
+        self.ensure_proper_array_tags(root)
+
+        xml_str = ET.tostring(root, encoding='unicode')
+
+        # Fix self-closing array tags before pretty printing
+        xml_str = self.fix_self_closing_tags(xml_str)
+
+        # Pretty print using minidom
+        pretty_xml = xml.dom.minidom.parseString(xml_str).toprettyxml(indent="  ", encoding='utf-8')
+        if isinstance(pretty_xml, bytes):
+            pretty_xml = pretty_xml.decode('utf-8')
+
+        # Apply fix again after pretty printing (in case minidom creates new self-closing tags)
+        return self.fix_self_closing_tags(pretty_xml)
+
+    def export_song(self, song_data: Dict[str, Any], sections: List[Dict[str, str]],
                    output_path: Path) -> Tuple[bool, str]:
-        """Export a single song to ProPresenter 6 format"""
-        
-        try:
-            # Validate song has content
-            title = song_data.get('title', 'Untitled')
-            
-            # Check if sections exist and have content
-            has_content = False
-            if sections:
-                for section in sections:
-                    if section.get('content', '').strip():
-                        has_content = True
-                        break
-            
-            if not has_content:
-                error_msg = f"Song '{title}' has no lyrics data and cannot be exported (empty or corrupt song data)"
-                logger.warning(error_msg)
-                return False, error_msg
-            
-            # Create XML document
-            root = self.create_pro6_document(song_data, sections)
-            
-            # Ensure empty arrays have proper tags
-            self.ensure_proper_array_tags(root)
-            
-            # Create filename
-            clean_title = self.sanitize_filename(title)
-            filename = f"{clean_title}.pro6"
-            full_path = output_path / filename
-            
-            # Ensure output directory exists
-            output_path.mkdir(parents=True, exist_ok=True)
-            
-            # Convert to string with proper formatting
-            xml_str = ET.tostring(root, encoding='unicode')
-            
-            # Fix self-closing array tags before pretty printing
-            xml_str = self.fix_self_closing_tags(xml_str)
-            
-            # Pretty print using minidom
-            dom = xml.dom.minidom.parseString(xml_str)
-            pretty_xml = dom.toprettyxml(indent="  ", encoding='utf-8')
-            
-            # Decode from bytes to string for final processing
-            if isinstance(pretty_xml, bytes):
-                pretty_xml = pretty_xml.decode('utf-8')
-            
-            # Apply fix again after pretty printing (in case minidom creates new self-closing tags)
-            pretty_xml = self.fix_self_closing_tags(pretty_xml)
-            
-            # Write to file
-            with open(full_path, 'w', encoding='utf-8') as f:
-                f.write(pretty_xml)
-            
+        """Export a single song to ProPresenter 6 format, named after its title"""
+        title = song_data.get('title', 'Untitled')
+        full_path = output_path / f"{self.sanitize_filename(title)}.pro6"
+
+        success, result = self._export_song_to_path(song_data, sections, full_path)
+        if success:
             return True, str(full_path)
-            
-        except OSError as e:
-            # Handle file system errors (errno 22 is invalid argument)
-            if e.errno == 22:
-                # Show the problematic filename in the error for debugging
-                error_msg = f"Cannot export '{title}': Song title contains invalid characters (newlines, control characters, or special symbols)"
-                logger.error(f"{error_msg}. Attempted filename: {full_path}", exc_info=True)
-            else:
-                error_msg = f"File system error for '{title}': {str(e)}"
-                logger.error(error_msg, exc_info=True)
-            return False, error_msg
-            
-        except Exception as e:
-            error_msg = f"Failed to export '{title}': {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            return False, error_msg
+        return False, result
     
     def export_songs_batch(self, songs_with_sections: List[Tuple[Dict[str, Any], List[Dict[str, str]]]],
                           output_path: Path, progress_callback=None,
@@ -752,30 +698,11 @@ class ProPresenter6Exporter:
             
             # Ensure output directory exists
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Create XML structure
+
+            # Create XML structure and serialize
             root = self.create_pro6_document(song_data, sections)
-            
-            # Ensure empty arrays have proper tags
-            self.ensure_proper_array_tags(root)
-            
-            # Convert to string with proper formatting
-            xml_str = ET.tostring(root, encoding='unicode')
-            
-            # Fix self-closing array tags before pretty printing
-            xml_str = self.fix_self_closing_tags(xml_str)
-            
-            # Pretty print using minidom
-            dom = xml.dom.minidom.parseString(xml_str)
-            pretty_xml = dom.toprettyxml(indent="  ", encoding='utf-8')
-            
-            # Decode from bytes to string for final processing
-            if isinstance(pretty_xml, bytes):
-                pretty_xml = pretty_xml.decode('utf-8')
-            
-            # Apply fix again after pretty printing (in case minidom creates new self-closing tags)
-            pretty_xml = self.fix_self_closing_tags(pretty_xml)
-            
+            pretty_xml = self._serialize_document(root)
+
             # Write to file
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(pretty_xml)
