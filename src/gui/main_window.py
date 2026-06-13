@@ -21,7 +21,7 @@ from src.gui.settings_window import SettingsWindow
 from src.gui.dialogs import DuplicateFileDialog, ExportOptionsDialog, section_frame
 from src.utils.config import get_config
 from src.utils.update_checker import UpdateChecker
-from src.version import __version__, RELEASE_DATE, RELEASE_YEAR
+from src.version import get_full_version, RELEASE_DATE, RELEASE_YEAR
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +307,7 @@ class MainWindow:
         """Show about dialog"""
         about_text = f"""EasyWorship to ProPresenter Converter
 
-Version: {__version__}
+Version: {get_full_version()}
 Released: {RELEASE_DATE}
 
 Converts songs from EasyWorship 6.1 database format

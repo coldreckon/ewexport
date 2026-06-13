@@ -7,8 +7,8 @@
 
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 3, 2, 0),
-    prodvers=(1, 3, 2, 0),
+    filevers=(1, 4, 0, 0),
+    prodvers=(1, 4, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -23,12 +23,12 @@ VSVersionInfo(
         u'040904B0',
         [StringStruct(u'CompanyName', u'EWExport Open Source Project'),
         StringStruct(u'FileDescription', u'EasyWorship to ProPresenter Converter - A tool for converting worship song databases'),
-        StringStruct(u'FileVersion', u'1.3.2.0'),
+        StringStruct(u'FileVersion', u'1.4.0.0'),
         StringStruct(u'InternalName', u'ewexport'),
         StringStruct(u'LegalCopyright', u'Copyright (c) 2026 - MIT License'),
         StringStruct(u'OriginalFilename', u'ewexport.exe'),
         StringStruct(u'ProductName', u'EasyWorship to ProPresenter Converter'),
-        StringStruct(u'ProductVersion', u'1.3.2.0'),
+        StringStruct(u'ProductVersion', u'1.4.0.0'),
         StringStruct(u'Comments', u'Open source worship song converter tool. Source available at github.com/karllinder/ewexport'),
         StringStruct(u'LegalTrademarks', u''),
         StringStruct(u'PrivateBuild', u''),

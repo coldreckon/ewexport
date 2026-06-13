@@ -13,14 +13,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from version import (
     __version__,
+    PRERELEASE,
     SETTINGS_SCHEMA_VERSION,
     SECTION_MAPPINGS_SCHEMA_VERSION,
     RELEASE_DATE,
     RELEASE_YEAR,
     get_version,
+    get_full_version,
+    is_prerelease,
+    get_release_tag,
     get_version_tuple,
     get_version_for_windows
 )
+from packaging import version as pkg_version
 
 
 class TestVersionModule(unittest.TestCase):
@@ -62,6 +67,28 @@ class TestVersionModule(unittest.TestCase):
 
         self.assertTrue(windows_version.endswith('.0'))
         self.assertEqual(windows_version, f"{__version__}.0")
+
+    def test_full_version_matches_prerelease_state(self):
+        """Full version includes the pre-release suffix only when set."""
+        if PRERELEASE:
+            self.assertEqual(get_full_version(), f"{__version__}-{PRERELEASE}")
+            self.assertTrue(is_prerelease())
+        else:
+            self.assertEqual(get_full_version(), __version__)
+            self.assertFalse(is_prerelease())
+
+    def test_release_tag_format(self):
+        """Release tag is 'v' + full version."""
+        self.assertEqual(get_release_tag(), f"v{get_full_version()}")
+        self.assertTrue(get_release_tag().startswith('v'))
+
+    def test_full_version_is_pep440_parseable(self):
+        """Full version must parse so the update checker can compare it."""
+        parsed = pkg_version.parse(get_full_version())
+        self.assertEqual(parsed.is_prerelease, is_prerelease())
+        # A pre-release must sort below the corresponding stable release
+        if is_prerelease():
+            self.assertLess(parsed, pkg_version.parse(__version__))
 
     def test_schema_versions_format(self):
         """Test that schema versions are valid version strings."""

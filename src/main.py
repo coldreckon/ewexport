@@ -51,13 +51,26 @@ def initialize_application():
     # Ensure default section mappings exist in app data directory
     ensure_mappings_file()
 
-from src.gui.main_window import MainWindow
+def _print_version_and_exit():
+    """Print the version and exit (used by --version/-V).
+
+    Handled before importing the GUI so it works headlessly and returns
+    immediately (the build script's verify step relies on this)."""
+    from src.version import get_full_version
+    print(f"ewexport {get_full_version()}")
+    sys.exit(0)
+
 
 def main():
+    # Handle --version before touching the GUI so it works without a display
+    if any(arg in ('--version', '-V') for arg in sys.argv[1:]):
+        _print_version_and_exit()
+
     # Initialize application environment
     initialize_application()
-    
-    # Start the GUI
+
+    # Start the GUI (imported lazily so --version stays headless)
+    from src.gui.main_window import MainWindow
     app = MainWindow()
     app.run()
 

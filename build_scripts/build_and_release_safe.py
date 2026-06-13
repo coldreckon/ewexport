@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import hashlib
 import json
+import argparse
 from pathlib import Path
 from datetime import datetime
 
@@ -18,11 +19,40 @@ from datetime import datetime
 if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-def get_version():
-    """Get version from the centralized version module"""
+def _load_version_module():
+    """Import the centralized version module (single source of truth)"""
     sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-    from version import __version__
-    return __version__
+    import version
+    return version
+
+def get_version():
+    """Get the numeric version (e.g. '1.4.0')"""
+    return _load_version_module().__version__
+
+def get_full_version():
+    """Get the full version including any pre-release suffix (e.g. '1.4.0-beta.1')"""
+    return _load_version_module().get_full_version()
+
+def get_release_tag():
+    """Get the GitHub release tag (e.g. 'v1.4.0-beta.1')"""
+    return _load_version_module().get_release_tag()
+
+def is_prerelease():
+    """True when this build is a pre-release (beta/rc)"""
+    return _load_version_module().is_prerelease()
+
+def get_repo_slug():
+    """Resolve the GitHub repo (owner/name) from the gh-detected remote"""
+    try:
+        result = subprocess.run(
+            ['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
+            capture_output=True, text=True, check=True)
+        slug = result.stdout.strip()
+        if slug:
+            return slug
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return 'karllinder/ewexport'
 
 def calculate_sha256(file_path):
     """Calculate SHA256 hash of file"""
@@ -116,47 +146,18 @@ def check_github_cli():
         print("   [INFO] Install from: https://cli.github.com/")
         return False
 
-def create_github_release(version, sha256):
-    """Create GitHub release and upload executable"""
-    print("[RELEASE] Creating GitHub release...")
-    
-    if not check_github_cli():
-        return False
-    
-    # Check if release already exists
-    try:
-        result = subprocess.run(['gh', 'release', 'view', f'v{version}'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"   [WARNING] Release v{version} already exists")
-            
-            response = input("   Do you want to upload to existing release? (y/n): ")
-            if response.lower() != 'y':
-                return False
-            
-            # Upload to existing release
-            try:
-                subprocess.run([
-                    'gh', 'release', 'upload', f'v{version}',
-                    'dist/ewexport.exe',
-                    'dist/release_info.json',
-                    '--clobber'  # Overwrite existing files
-                ], check=True)
-                
-                print("   [OK] Files uploaded to existing release")
-                return True
-                
-            except subprocess.CalledProcessError as e:
-                print(f"   [ERROR] Upload failed: {e}")
-                return False
-    except (subprocess.SubprocessError, OSError):
-        pass  # Release doesn't exist, continue to create it
-    
-    # Create release notes with SHA256
-    release_notes = f"""## Manual Release System & Build Improvements
+def build_notes(sha256, notes_file=None):
+    """Build release notes: --notes-file body (if given) plus a SHA256 footer"""
+    size_mb = Path('dist/ewexport.exe').stat().st_size / (1024 * 1024)
+    body = None
+    if notes_file and Path(notes_file).exists():
+        body = Path(notes_file).read_text(encoding='utf-8').strip()
+    if not body:
+        body = "## EWExport Release"
+    return f"""{body}
 
 ### Download & Security
-- **ewexport.exe**: Windows executable ({Path('dist/ewexport.exe').stat().st_size / (1024 * 1024):.2f} MB)
+- **ewexport.exe**: Windows executable ({size_mb:.2f} MB)
 - **SHA256**: `{sha256}`
 
 ### Antivirus Information
@@ -165,73 +166,139 @@ This executable is built locally with antivirus-friendly settings.
 If your antivirus flags this file:
 1. Verify the SHA256 hash matches the one above
 2. Add an exception for ewexport.exe
-3. See ANTIVIRUS.md for detailed guidance
+3. See ANTIVIRUS.md for detailed guidance"""
 
-See the GitHub release page for complete details."""
-    
+
+def create_github_release(sha256, assume_yes=False, notes_file=None):
+    """Create or update the GitHub release for the current version.
+
+    Uses the full version tag (e.g. v1.4.0-beta.1) and marks pre-releases.
+    """
+    print("[RELEASE] Creating GitHub release...")
+
+    if not check_github_cli():
+        return False
+
+    tag = get_release_tag()
+    prerelease = is_prerelease()
+    repo = get_repo_slug()
+    notes = build_notes(sha256, notes_file)
+    assets = ['dist/ewexport.exe', 'dist/release_info.json']
+
+    if prerelease:
+        print("   [INFO] Pre-release build -> release will be marked as a pre-release")
+
+    exists = subprocess.run(['gh', 'release', 'view', tag],
+                            capture_output=True, text=True).returncode == 0
+
+    if exists:
+        print(f"   [WARNING] Release {tag} already exists")
+        if not assume_yes:
+            response = input("   Upload assets and update notes on the existing release? (y/n): ")
+            if response.lower() != 'y':
+                return False
+        try:
+            subprocess.run(['gh', 'release', 'upload', tag, *assets, '--clobber'],
+                           check=True)
+            edit_cmd = ['gh', 'release', 'edit', tag, '--notes', notes]
+            if prerelease:
+                edit_cmd.append('--prerelease')
+            subprocess.run(edit_cmd, check=True)
+            print(f"   [OK] Assets uploaded and notes updated on {tag}")
+            print(f"   [INFO] View at: https://github.com/{repo}/releases/tag/{tag}")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"   [ERROR] Update failed: {e}")
+            return False
+
+    create_cmd = [
+        'gh', 'release', 'create', tag,
+        '--title', f'Release {tag}',
+        '--notes', notes,
+    ]
+    if prerelease:
+        create_cmd.append('--prerelease')
+    create_cmd += assets
+
     try:
-        # Create release
-        subprocess.run([
-            'gh', 'release', 'create', f'v{version}',
-            '--title', f'Release v{version}',
-            '--notes', release_notes,
-            'dist/ewexport.exe',
-            'dist/release_info.json'
-        ], check=True)
-        
-        print(f"   [OK] Release v{version} created successfully")
-        print(f"   [INFO] View at: https://github.com/karllinder/ewexport/releases/tag/v{version}")
+        subprocess.run(create_cmd, check=True)
+        print(f"   [OK] Release {tag} created successfully")
+        print(f"   [INFO] View at: https://github.com/{repo}/releases/tag/{tag}")
         return True
-        
     except subprocess.CalledProcessError as e:
         print(f"   [ERROR] Release creation failed: {e}")
         return False
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Build ewexport.exe and (optionally) publish it to a GitHub "
+                    "release. Tag/title/pre-release flag derive from src/version.py "
+                    "(e.g. v1.4.0-beta.1, marked as a pre-release).")
+    parser.add_argument('-y', '--yes', action='store_true',
+                        help="Skip confirmation prompts (unattended)")
+    parser.add_argument('--no-release', action='store_true',
+                        help="Build only; do not create or update a GitHub release")
+    parser.add_argument('--notes-file',
+                        help="Markdown file to use as the release notes body")
+    return parser.parse_args(argv)
+
+
 def main():
     """Main build and release process"""
+    args = parse_args()
+
     print("=" * 60)
     print("EWExport Local Build and Release (Windows Safe)")
     print("=" * 60)
-    
-    # Get version
-    version = get_version()
-    print(f"[INFO] Building version: {version}")
-    
+
+    full_version = get_full_version()
+    tag = get_release_tag()
+    track = "pre-release (beta/rc)" if is_prerelease() else "stable"
+    print(f"[INFO] Building version: {full_version}  ->  tag {tag}  [{track}]")
+
     # Step 1: Clean environment
     clean_build_environment()
-    
+
     # Step 2: Build executable
     if not build_executable():
         print("[ERROR] Build failed - aborting")
         return False
-    
+
     # Step 3: Verify executable
     success, sha256 = verify_executable()
     if not success:
         print("[ERROR] Executable verification failed - aborting")
         return False
-    
-    # Step 4: Create release info
-    create_release_info(version, sha256)
-    
-    # Step 5: Ask about GitHub release
-    print("\n" + "=" * 60)
-    print("[RELEASE] Ready to create GitHub release")
-    print("=" * 60)
-    
-    response = input(f"Create GitHub release for v{version}? (y/n): ")
-    if response.lower() == 'y':
-        if create_github_release(version, sha256):
-            print("\n[SUCCESS] Release created and executable uploaded.")
-        else:
-            print("\n[ERROR] Release creation failed.")
-            print("[INFO] You can manually upload dist/ewexport.exe to GitHub releases")
-    else:
-        print("\n[INFO] Build complete! Files ready in dist/ folder:")
+
+    # Step 4: Create release info (records the full, pre-release-aware version)
+    create_release_info(full_version, sha256)
+
+    # Step 5: GitHub release
+    if args.no_release:
+        print("\n[INFO] Build complete (--no-release). Files ready in dist/:")
         print("   - dist/ewexport.exe")
         print("   - dist/release_info.json")
-        print("\n[INFO] You can manually upload these to GitHub releases")
-    
+        return True
+
+    print("\n" + "=" * 60)
+    print(f"[RELEASE] Ready to publish release {tag}")
+    print("=" * 60)
+
+    if not args.yes:
+        response = input(f"Create/update GitHub release {tag}? (y/n): ")
+        if response.lower() != 'y':
+            print("\n[INFO] Skipped release. Files ready in dist/:")
+            print("   - dist/ewexport.exe")
+            print("   - dist/release_info.json")
+            return True
+
+    if create_github_release(sha256, assume_yes=args.yes, notes_file=args.notes_file):
+        print("\n[SUCCESS] Release published and executable uploaded.")
+    else:
+        print("\n[ERROR] Release publishing failed.")
+        print("[INFO] You can manually upload dist/ewexport.exe to GitHub releases")
+        return False
+
     print("\n" + "=" * 60)
     print("[COMPLETE] Build process complete")
     print("=" * 60)
