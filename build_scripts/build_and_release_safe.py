@@ -46,7 +46,7 @@ def get_repo_slug():
     try:
         result = subprocess.run(
             ['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
-            capture_output=True, text=True, check=True)
+            capture_output=True, text=True, check=True, encoding='utf-8', errors='replace')
         slug = result.stdout.strip()
         if slug:
             return slug
@@ -137,8 +137,9 @@ def create_release_info(version, sha256):
 def check_github_cli():
     """Check if GitHub CLI is available"""
     try:
-        subprocess.run(['gh', '--version'], 
-                      capture_output=True, text=True, check=True)
+        subprocess.run(['gh', '--version'],
+                      capture_output=True, text=True, check=True,
+                      encoding='utf-8', errors='replace')
         print("   [OK] GitHub CLI available")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -189,7 +190,8 @@ def create_github_release(sha256, assume_yes=False, notes_file=None):
         print("   [INFO] Pre-release build -> release will be marked as a pre-release")
 
     exists = subprocess.run(['gh', 'release', 'view', tag],
-                            capture_output=True, text=True).returncode == 0
+                            capture_output=True, text=True,
+                            encoding='utf-8', errors='replace').returncode == 0
 
     if exists:
         print(f"   [WARNING] Release {tag} already exists")

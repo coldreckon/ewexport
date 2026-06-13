@@ -56,7 +56,7 @@ def get_repo_slug():
     try:
         result = subprocess.run(
             ['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
-            capture_output=True, text=True, check=True)
+            capture_output=True, text=True, check=True, encoding='utf-8', errors='replace')
         slug = result.stdout.strip()
         if slug:
             return slug
@@ -130,7 +130,8 @@ def verify_executable():
     # Test if executable runs
     try:
         result = subprocess.run([str(exe_path), '--version'],
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, timeout=10,
+                              encoding='utf-8', errors='replace')
         if result.returncode == 0 or 'ewexport' in result.stderr.lower():
             print("   ✅ Executable verification passed")
             return True, sha256
@@ -205,8 +206,9 @@ def create_release_info(version, sha256):
 def check_github_cli():
     """Check if GitHub CLI is available"""
     try:
-        result = subprocess.run(['gh', '--version'], 
-                              capture_output=True, text=True, check=True)
+        result = subprocess.run(['gh', '--version'],
+                              capture_output=True, text=True, check=True,
+                              encoding='utf-8', errors='replace')
         print("   ✅ GitHub CLI available")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -262,7 +264,8 @@ def create_github_release(sha256, assume_yes=False, notes_file=None):
 
     # Does the release already exist?
     exists = subprocess.run(['gh', 'release', 'view', tag],
-                            capture_output=True, text=True).returncode == 0
+                            capture_output=True, text=True,
+                            encoding='utf-8', errors='replace').returncode == 0
 
     if exists:
         print(f"   ⚠️  Release {tag} already exists")
