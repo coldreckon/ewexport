@@ -29,7 +29,7 @@ A Windows desktop application that converts songs from EasyWorship 6.1 database 
 2. Download `ewexport.exe`
 3. Run it from anywhere - it's completely standalone
 
-**Antivirus note**: Some antivirus software may flag the executable as a false positive. This is common with PyInstaller apps. Verify the SHA256 hash from the release page and add an exception if needed.
+**Signed builds**: Release executables are digitally signed via Azure Artifact Signing, so Windows shows a verified publisher and SmartScreen no longer warns about an "unknown publisher". If your antivirus still reports a false positive (uncommon for PyInstaller apps once signed), verify the SHA256 hash from the release page, add an exception if needed, and report the false positive to your vendor.
 
 ### Run from Source
 

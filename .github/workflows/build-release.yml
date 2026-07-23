@@ -1,73 +1,122 @@
-name: Create Release (Manual Upload)
+name: Build, Sign & Release
+
+# Builds ewexport.exe on Windows, signs it with Azure Artifact Signing
+# (formerly Trusted Signing), verifies the signature, and publishes it to the
+# GitHub Release for the pushed tag. A manual run (workflow_dispatch) can build
+# and optionally sign for smoke-testing without publishing.
 
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.1.2
-  workflow_dispatch:  # Allow manual triggering
+      - 'v*.*.*'          # e.g. v1.4.0 or v1.4.0-beta.2
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Sign the build (requires Azure setup to be live)'
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write         # required for Azure OIDC (azure/login)
+  contents: write         # required to create/attach the GitHub Release
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    
-    permissions:
-      contents: write
-    
+  release:
+    runs-on: windows-latest
+    environment: release  # must match the app registration's federated-credential subject
+                          # (repo:coldreckon/ewexport:environment:release)
+
+    # Sign on every tag push; on a manual run, honour the `sign` input.
+    env:
+      DO_SIGN: ${{ github.event_name != 'workflow_dispatch' || inputs.sign }}
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-    
-    - name: Read release notes from CHANGELOG
-      id: changelog
-      run: |
-        # Extract release notes for this version from CHANGELOG.md
-        if [ -f "CHANGELOG.md" ]; then
-          # Extract section for current version
-          awk "/## \[${{ steps.get_version.outputs.VERSION }}\]/,/## \[/" CHANGELOG.md | head -n -1 > release_notes.txt
-          
-          # Add manual upload instructions
-          echo "" >> release_notes.txt
-          echo "## 📥 Download" >> release_notes.txt
-          echo "" >> release_notes.txt
-          echo "**Note**: Executables are built locally and uploaded manually to avoid antivirus false positives." >> release_notes.txt
-          echo "" >> release_notes.txt
-          echo "- **ewexport.exe** - Windows executable (will be uploaded shortly)" >> release_notes.txt
-          echo "- **release_info.json** - Build information and SHA256 hash" >> release_notes.txt
-          echo "" >> release_notes.txt
-          echo "## 🛡️ Antivirus Information" >> release_notes.txt
-          echo "" >> release_notes.txt
-          echo "If your antivirus flags the executable:" >> release_notes.txt
-          echo "1. Verify the SHA256 hash in release_info.json" >> release_notes.txt
-          echo "2. Add an exception for ewexport.exe" >> release_notes.txt
-          echo "3. See the project README for antivirus guidance" >> release_notes.txt
-        else
-          echo "Release ${{ steps.get_version.outputs.VERSION }}" > release_notes.txt
-          echo "" >> release_notes.txt
-          echo "Executable will be uploaded manually." >> release_notes.txt
-        fi
-    
-    - name: Create Release (Draft)
-      uses: softprops/action-gh-release@v1
-      with:
-        name: Release ${{ steps.get_version.outputs.VERSION }}
-        body_path: release_notes.txt
-        draft: true  # Create as draft for manual upload
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Post-creation notice
-      run: |
-        echo "🎉 Draft release created: ${{ steps.get_version.outputs.VERSION }}"
-        echo ""
-        echo "📝 Next steps:"
-        echo "1. Run: python build_scripts/build_and_release.py"
-        echo "2. Upload ewexport.exe to the draft release"
-        echo "3. Publish the release"
-        echo ""
-        echo "🌐 Release URL: https://github.com/karllinder/ewexport/releases/tag/${{ steps.get_version.outputs.VERSION }}"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Guard: on a tag push, the pushed tag must match src/version.py so the
+      # version embedded in release_info.json / the exe matches the release tag.
+      - name: Verify tag matches src/version.py
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          EXPECTED="$(python -c 'import sys; sys.path.insert(0,"src"); import version; print(version.get_release_tag())')"
+          echo "Pushed tag:      ${GITHUB_REF_NAME}"
+          echo "version.py wants: ${EXPECTED}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match src/version.py (${EXPECTED}). Bump src/version.py and retag."
+            exit 1
+          fi
+
+      - name: Build executable
+        run: python build_scripts/build_clean.py
+
+      # ----- Signing (Azure Artifact Signing via OIDC) -----
+      - name: Azure login (OIDC)
+        if: env.DO_SIGN == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign ewexport.exe
+        if: env.DO_SIGN == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          # Non-secret account details are stored as repository *variables*.
+          endpoint: ${{ vars.AZURE_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_CODESIGN_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_CODESIGN_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signature
+        if: env.DO_SIGN == 'true'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found on runner" }
+          Write-Host "Using $($signtool.FullName)"
+          & $signtool.FullName verify /pa /v dist\ewexport.exe
+          if ($LASTEXITCODE -ne 0) { throw "Signature verification failed" }
+
+      # ----- Release metadata (SHA256 computed AFTER signing) -----
+      - name: Generate release_info.json + notes
+        run: python build_scripts/ci_release.py
+
+      # ----- Publish (tag push) or expose artifact (manual run) -----
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body_path: release_notes.txt
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/ewexport.exe
+            dist/release_info.json
+
+      - name: Upload build artifact (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ewexport-exe
+          path: |
+            dist/ewexport.exe
+            dist/release_info.json

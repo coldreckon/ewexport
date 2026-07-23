@@ -334,6 +334,39 @@ class ConfigManager:
         """Set the export directory"""
         self.set('export.output_directory', str(path))
     
+    def get_search_history(self) -> list:
+        """Load saved search history (most recent last).
+
+        Falls back to the legacy ~/.ewexport location once, so history
+        written by older versions is migrated to the app data directory
+        on the next save.
+        """
+        history_file = self.app_data_dir / 'search_history.json'
+        if not history_file.exists():
+            legacy_file = Path.home() / '.ewexport' / 'search_history.json'
+            if legacy_file == history_file or not legacy_file.exists():
+                return []
+            history_file = legacy_file
+
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return list(data.get('search_history', []))
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not load search history from {history_file}: {e}")
+            return []
+
+    def save_search_history(self, history: list) -> bool:
+        """Save search history to the app data directory"""
+        history_file = self.app_data_dir / 'search_history.json'
+        try:
+            with open(history_file, 'w', encoding='utf-8') as f:
+                json.dump({'search_history': list(history)}, f, indent=2, ensure_ascii=False)
+            return True
+        except OSError as e:
+            logger.warning(f"Could not save search history: {e}")
+            return False
+
     def get_column_widths(self) -> Dict[str, int]:
         """Get song list column widths"""
         return self.get('song_list.column_widths', {})

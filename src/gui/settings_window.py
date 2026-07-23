@@ -6,37 +6,31 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional
-import shutil
-from src.version import SECTION_MAPPINGS_SCHEMA_VERSION
-from src.utils.config import get_app_data_dir
-from packaging import version as pkg_version
+
+import customtkinter as ctk
+
+from src.utils import section_mappings
+from src.gui.dialogs import make_modal, center_on_parent
 
 logger = logging.getLogger(__name__)
 
 class SettingsWindow:
-    CURRENT_VERSION = SECTION_MAPPINGS_SCHEMA_VERSION  # Imported from centralized version module
 
     def __init__(self, parent_window=None):
         self.parent = parent_window
-        self.window = tk.Toplevel() if parent_window else tk.Tk()
+        self.window = ctk.CTkToplevel() if parent_window else ctk.CTk()
         self.window.title("Section Mapping Settings")
-        self.window.geometry("800x600")
+        self.window.geometry("820x640")
 
         # Make window modal if has parent
         if parent_window:
-            self.window.transient(parent_window.root)
-            self.window.grab_set()
+            make_modal(self.window, parent_window.root)
 
-        # Load current mappings from app data directory (cross-platform)
-        app_dir = get_app_data_dir()
-        self.config_file = app_dir / "section_mappings.json"
+        # Load current mappings (file lives in the app data directory)
         self.mappings = {}
         self.original_mappings = {}
-        self.ensure_config_exists()
         self.load_mappings()
         
         # Track changes
@@ -50,151 +44,143 @@ class SettingsWindow:
         
     def setup_ui(self):
         """Build the settings UI"""
-        main_frame = ttk.Frame(self.window, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        self.window.columnconfigure(0, weight=1)
-        self.window.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(1, weight=1)
-        
+        main_frame = ctk.CTkFrame(self.window, fg_color='transparent')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
         # Title and description
-        title_frame = ttk.Frame(main_frame)
-        title_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        ttk.Label(title_frame, text="Section Name Mappings", 
-                 font=('TkDefaultFont', 12, 'bold')).pack(anchor=tk.W)
-        ttk.Label(title_frame, 
-                 text="Configure how section names are translated from Swedish to English for ProPresenter export",
-                 wraplength=750).pack(anchor=tk.W, pady=(5, 0))
-        
+        title_frame = ctk.CTkFrame(main_frame, fg_color='transparent')
+        title_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ctk.CTkLabel(title_frame, text="Section Name Mappings",
+                     font=ctk.CTkFont(size=15, weight='bold')).pack(anchor=tk.W)
+        ctk.CTkLabel(title_frame,
+                     text="Configure how section names are translated from Swedish to English for ProPresenter export",
+                     wraplength=760).pack(anchor=tk.W, pady=(2, 0))
+
         # Main content area with tabs
-        notebook = ttk.Notebook(main_frame)
-        notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
-        
-        # Mappings tab
-        mappings_frame = ttk.Frame(notebook)
-        notebook.add(mappings_frame, text="Section Mappings")
+        self.tabview = ctk.CTkTabview(main_frame)
+        self.tabview.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        mappings_frame = self.tabview.add("Section Mappings")
         self.setup_mappings_tab(mappings_frame)
-        
-        # Preview tab
-        preview_frame = ttk.Frame(notebook)
-        notebook.add(preview_frame, text="Preview & Test")
+
+        preview_frame = self.tabview.add("Preview & Test")
         self.setup_preview_tab(preview_frame)
-        
+
         # Bottom button bar
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
-        
+        button_frame = ctk.CTkFrame(main_frame, fg_color='transparent')
+        button_frame.pack(fill=tk.X)
+
         # Left side buttons
-        left_buttons = ttk.Frame(button_frame)
+        left_buttons = ctk.CTkFrame(button_frame, fg_color='transparent')
         left_buttons.pack(side=tk.LEFT)
-        
-        ttk.Button(left_buttons, text="Import...", 
-                  command=self.import_mappings).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(left_buttons, text="Export...", 
-                  command=self.export_mappings).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(left_buttons, text="Reset to Defaults", 
-                  command=self.reset_to_defaults).pack(side=tk.LEFT)
-        
+
+        ctk.CTkButton(left_buttons, text="Import...", width=90,
+                      command=self.import_mappings).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(left_buttons, text="Export...", width=90,
+                      command=self.export_mappings).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(left_buttons, text="Reset to Defaults", width=130,
+                      fg_color='transparent', border_width=1,
+                      command=self.reset_to_defaults).pack(side=tk.LEFT)
+
         # Right side buttons
-        right_buttons = ttk.Frame(button_frame)
+        right_buttons = ctk.CTkFrame(button_frame, fg_color='transparent')
         right_buttons.pack(side=tk.RIGHT)
-        
-        ttk.Button(right_buttons, text="Apply", 
-                  command=self.apply_changes).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(right_buttons, text="Save", 
-                  command=self.save_changes).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(right_buttons, text="Cancel", 
-                  command=self.on_close).pack(side=tk.LEFT)
+
+        ctk.CTkButton(right_buttons, text="Apply", width=90,
+                      command=self.apply_changes).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(right_buttons, text="Save", width=90,
+                      command=self.save_changes).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(right_buttons, text="Cancel", width=90,
+                      fg_color='transparent', border_width=1,
+                      command=self.on_close).pack(side=tk.LEFT)
     
     def setup_mappings_tab(self, parent):
         """Setup the mappings configuration tab"""
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        
+
         # Toolbar
-        toolbar = ttk.Frame(parent)
+        toolbar = ctk.CTkFrame(parent, fg_color='transparent')
         toolbar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        
-        ttk.Button(toolbar, text="Add Mapping", 
-                  command=self.add_mapping).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(toolbar, text="Edit Selected", 
-                  command=self.edit_mapping).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(toolbar, text="Delete Selected", 
-                  command=self.delete_mapping).pack(side=tk.LEFT)
-        
-        # Create treeview for mappings
+
+        ctk.CTkButton(toolbar, text="Add Mapping", width=110,
+                      command=self.add_mapping).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(toolbar, text="Edit Selected", width=110,
+                      command=self.edit_mapping).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkButton(toolbar, text="Delete Selected", width=110,
+                      fg_color='transparent', border_width=1,
+                      command=self.delete_mapping).pack(side=tk.LEFT)
+
+        # Treeview kept for the mappings table (no CTk equivalent;
+        # styled to match the theme via theme.apply_ttk_styles)
         columns = ('swedish', 'english')
-        self.mappings_tree = ttk.Treeview(parent, columns=columns, show='headings', 
+        self.mappings_tree = ttk.Treeview(parent, columns=columns, show='headings',
                                          selectmode='browse', height=15)
-        self.mappings_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), 
+        self.mappings_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S),
                                padx=5, pady=(0, 5))
-        
+
         # Configure columns
         self.mappings_tree.heading('swedish', text='Swedish/Source')
         self.mappings_tree.column('swedish', width=300)
-        
+
         self.mappings_tree.heading('english', text='English/Target')
         self.mappings_tree.column('english', width=300)
-        
+
         # Add scrollbar
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", 
+        scrollbar = ttk.Scrollbar(parent, orient="vertical",
                                  command=self.mappings_tree.yview)
         scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S), pady=(0, 5))
         self.mappings_tree.configure(yscrollcommand=scrollbar.set)
-        
+
         # Double-click to edit
         self.mappings_tree.bind('<Double-Button-1>', lambda e: self.edit_mapping())
-        
+
         # Load mappings into tree
         self.refresh_mappings_tree()
-        
+
         # Info label
-        info_label = ttk.Label(parent, 
+        info_label = ctk.CTkLabel(parent,
                              text="Note: Mappings are case-insensitive. Numbers in section names are preserved automatically.",
-                             font=('TkDefaultFont', 9))
+                             font=ctk.CTkFont(size=11))
         info_label.grid(row=2, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
     
     def setup_preview_tab(self, parent):
         """Setup the preview and testing tab"""
+        from src.gui.dialogs import section_frame
+
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        
+
         # Test input frame
-        input_frame = ttk.LabelFrame(parent, text="Test Input", padding="10")
+        input_frame = section_frame(parent, "Test Input")
         input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        input_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(input_frame, text="Swedish Text:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        
+
+        input_row = ctk.CTkFrame(input_frame, fg_color='transparent')
+        input_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(input_row, text="Swedish Text:").pack(side=tk.LEFT, padx=(0, 5))
+
         self.test_input = tk.StringVar(value="vers 1")
-        test_entry = ttk.Entry(input_frame, textvariable=self.test_input, width=40)
-        test_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+        test_entry = ctk.CTkEntry(input_row, textvariable=self.test_input)
+        test_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         test_entry.bind('<KeyRelease>', self.update_preview)
-        
-        ttk.Button(input_frame, text="Test", 
-                  command=self.update_preview).grid(row=0, column=2, padx=(5, 0))
-        
+
+        ctk.CTkButton(input_row, text="Test", width=80,
+                      command=self.update_preview).pack(side=tk.LEFT, padx=(5, 0))
+
         # Results frame
-        results_frame = ttk.LabelFrame(parent, text="Preview Results", padding="10")
+        results_frame = section_frame(parent, "Preview Results")
         results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
-        results_frame.columnconfigure(0, weight=1)
-        results_frame.rowconfigure(0, weight=1)
-        
+
         # Preview text widget
-        self.preview_text = tk.Text(results_frame, height=10, width=60, wrap=tk.WORD)
-        self.preview_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        preview_scroll = ttk.Scrollbar(results_frame, orient="vertical", 
-                                      command=self.preview_text.yview)
-        preview_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        self.preview_text.configure(yscrollcommand=preview_scroll.set)
-        
+        self.preview_text = ctk.CTkTextbox(results_frame, wrap=tk.WORD)
+        self.preview_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
         # Common examples frame
-        examples_frame = ttk.LabelFrame(parent, text="Common Examples", padding="10")
+        examples_frame = section_frame(parent, "Common Examples")
         examples_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        
+
         examples = [
             ("vers 1", "Verse 1"),
             ("refräng", "Chorus"),
@@ -202,13 +188,14 @@ class SettingsWindow:
             ("förrefräng", "Pre-Chorus"),
             ("slut", "Outro")
         ]
-        
+
         examples_text = "Examples of mappings:\n"
         for swedish, english in examples:
             examples_text += f"  • {swedish} → {english}\n"
-        
-        ttk.Label(examples_frame, text=examples_text, justify=tk.LEFT).pack(anchor=tk.W)
-        
+
+        ctk.CTkLabel(examples_frame, text=examples_text,
+                     justify=tk.LEFT).pack(anchor=tk.W, padx=10, pady=(0, 8))
+
         # Initial preview
         self.update_preview()
     
@@ -438,160 +425,31 @@ class SettingsWindow:
                                   "Are you sure you want to continue?"):
             return
         
-        # Get default mappings from default config
-        default_config = self.get_default_config()
-        self.mappings = default_config['section_mappings']
-        
+        self.mappings = dict(section_mappings.DEFAULT_SECTION_MAPPINGS)
+
         self.refresh_mappings_tree()
         self.has_changes = True
         self.update_preview()
-        
+
         messagebox.showinfo("Reset Complete", "Mappings have been reset to defaults.")
-    
-    def ensure_config_exists(self):
-        """Ensure config file exists with default values for new users"""
-        if not self.config_file.exists():
-            # Create default config in APPDATA
-            default_config = self.get_default_config()
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, indent=2, ensure_ascii=False)
-            logger.info(f"Created default config at {self.config_file}")
-    
-    def get_default_config(self):
-        """Get default configuration structure"""
-        return {
-            "version": self.CURRENT_VERSION,
-            "section_mappings": {
-                "vers": "Verse",
-                "verse": "Verse",
-                "refräng": "Chorus",
-                "chorus": "Chorus",
-                "brygga": "Bridge",
-                "bridge": "Bridge",
-                "förrefräng": "Pre-Chorus",
-                "pre-chorus": "Pre-Chorus",
-                "prechorus": "Pre-Chorus",
-                "intro": "Intro",
-                "outro": "Outro",
-                "slut": "Outro",
-                "tag": "Tag",
-                "ending": "Ending"
-            },
-            "number_mapping_rules": {
-                "preserve_numbers": True,
-                "start_from_one": True,
-                "format": "{section_name} {number}"
-            },
-            "gui_settings": {
-                "editable_via_gui": True,
-                "description": "Section name mappings from Swedish to English for ProPresenter export"
-            },
-            "notes": [
-                "This file maps Swedish section names to English equivalents",
-                "Numbers are preserved: 'vers 1' becomes 'Verse 1'",
-                "Case-insensitive matching is applied",
-                "These mappings can be edited from Edit -> Section Mappings in the GUI"
-            ]
-        }
-    
-    def migrate_config(self, data, from_version):
-        """Migrate config from older version to current version.
 
-        Uses semantic version comparison to handle all version ranges properly.
-        """
-        try:
-            current_ver = pkg_version.parse(from_version) if from_version else pkg_version.parse("0.0.0")
-        except Exception:
-            # If version parsing fails, assume very old version
-            logger.warning(f"Could not parse version '{from_version}', treating as 0.0.0")
-            current_ver = pkg_version.parse("0.0.0")
-
-        # Migration from pre-1.1.0 to 1.1.0: Add version field if missing
-        if current_ver < pkg_version.parse("1.1.0"):
-            logger.info(f"Applying section mappings migration: pre-1.1.0 -> 1.1.0")
-            data["version"] = self.CURRENT_VERSION
-            # Ensure all default fields exist
-            if "notes" not in data:
-                data["notes"] = self.get_default_config()["notes"]
-
-        # Migration from pre-1.2.0 to 1.2.0
-        if current_ver < pkg_version.parse("1.2.0"):
-            logger.info(f"Applying section mappings migration: pre-1.2.0 -> 1.2.0")
-            # Update version to current
-            data["version"] = self.CURRENT_VERSION
-
-        # Future migrations would follow the same pattern:
-        # if current_ver < pkg_version.parse("1.3.0"):
-        #     # Migrate from pre-1.3.0 to 1.3.0
-
-        return data
-    
     def load_mappings(self):
-        """Load mappings from config file with version handling"""
+        """Load mappings via the shared section_mappings module"""
         try:
-            if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                    # Check version and migrate if needed
-                    file_version = data.get('version', '1.0.0')
-                    if file_version != self.CURRENT_VERSION:
-                        data = self.migrate_config(data, file_version)
-                        # Save migrated config
-                        with open(self.config_file, 'w', encoding='utf-8') as fw:
-                            json.dump(data, fw, indent=2, ensure_ascii=False)
-                    
-                    self.mappings = data.get('section_mappings', {})
-                    # Convert keys to lowercase for consistency
-                    self.mappings = {k.lower(): v for k, v in self.mappings.items()}
-            else:
-                # Use defaults if file doesn't exist (shouldn't happen now)
-                self.reset_to_defaults()
-            
-            # Store original for comparison
+            self.mappings = section_mappings.load_mappings()
             self.original_mappings = self.mappings.copy()
-            
         except Exception as e:
             messagebox.showerror("Load Error", f"Failed to load mappings:\n{str(e)}")
-            self.reset_to_defaults()
-    
+            self.mappings = dict(section_mappings.DEFAULT_SECTION_MAPPINGS)
+            self.original_mappings = self.mappings.copy()
+
     def save_mappings(self):
-        """Save mappings to config file"""
+        """Save mappings via the shared section_mappings module"""
         try:
-            # Load existing config to preserve other settings
-            if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            else:
-                data = {}
-            
-            # Update version and section mappings
-            data['version'] = self.CURRENT_VERSION
-            data['section_mappings'] = self.mappings
-            
-            # Ensure other required fields exist
-            if 'number_mapping_rules' not in data:
-                data['number_mapping_rules'] = {
-                    "preserve_numbers": True,
-                    "start_from_one": True,
-                    "format": "{section_name} {number}"
-                }
-            
-            if 'gui_settings' not in data:
-                data['gui_settings'] = {
-                    "editable_via_gui": True,
-                    "description": "Section name mappings from Swedish to English for ProPresenter export"
-                }
-            
-            # Save to APPDATA config file (folder should already exist)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            
+            section_mappings.save_mappings(self.mappings)
             self.original_mappings = self.mappings.copy()
             self.has_changes = False
-            
             return True
-            
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save mappings:\n{str(e)}")
             return False
@@ -633,44 +491,42 @@ class SettingsWindow:
 
 class MappingDialog:
     """Dialog for adding/editing a mapping"""
-    
-    def __init__(self, parent, title="Add Mapping", 
+
+    def __init__(self, parent, title="Add Mapping",
                  initial_swedish="", initial_english=""):
         self.result = None
-        
-        self.dialog = tk.Toplevel(parent)
+
+        self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title(title)
-        self.dialog.geometry("400x150")
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-        
-        # Center on parent
-        parent.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - 75
-        self.dialog.geometry(f"+{x}+{y}")
-        
+        center_on_parent(self.dialog, parent, 420, 190)
+        self.dialog.resizable(False, False)
+        make_modal(self.dialog, parent)
+
         # Create form
-        frame = ttk.Frame(self.dialog, padding="20")
-        frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        ttk.Label(frame, text="Swedish/Source:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        frame = ctk.CTkFrame(self.dialog, fg_color='transparent')
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
+        frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(frame, text="Swedish/Source:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.swedish_var = tk.StringVar(value=initial_swedish)
-        self.swedish_entry = ttk.Entry(frame, textvariable=self.swedish_var, width=30)
-        self.swedish_entry.grid(row=0, column=1, pady=5, padx=(10, 0))
-        
-        ttk.Label(frame, text="English/Target:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.swedish_entry = ctk.CTkEntry(frame, textvariable=self.swedish_var, width=240)
+        self.swedish_entry.grid(row=0, column=1, pady=5, padx=(10, 0), sticky=tk.EW)
+
+        ctk.CTkLabel(frame, text="English/Target:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.english_var = tk.StringVar(value=initial_english)
-        self.english_entry = ttk.Entry(frame, textvariable=self.english_var, width=30)
-        self.english_entry.grid(row=1, column=1, pady=5, padx=(10, 0))
-        
+        self.english_entry = ctk.CTkEntry(frame, textvariable=self.english_var, width=240)
+        self.english_entry.grid(row=1, column=1, pady=5, padx=(10, 0), sticky=tk.EW)
+
         # Buttons
-        button_frame = ttk.Frame(frame)
+        button_frame = ctk.CTkFrame(frame, fg_color='transparent')
         button_frame.grid(row=2, column=0, columnspan=2, pady=(15, 0))
-        
-        ttk.Button(button_frame, text="OK", command=self.ok_clicked).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=self.cancel_clicked).pack(side=tk.LEFT)
-        
+
+        ctk.CTkButton(button_frame, text="OK", width=100,
+                      command=self.ok_clicked).pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(button_frame, text="Cancel", width=100,
+                      fg_color='transparent', border_width=1,
+                      command=self.cancel_clicked).pack(side=tk.LEFT)
+
         # Focus and bindings
         self.swedish_entry.focus()
         self.swedish_entry.bind('<Return>', lambda e: self.english_entry.focus())

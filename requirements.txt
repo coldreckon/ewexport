@@ -1,5 +1,7 @@
-# GUI framework (built into Python)
-# tkinter is included with Python standard library
+# GUI framework (modern themed widgets on top of tkinter)
+# tkinter itself is included with Python standard library
+customtkinter>=5.2.2
+pillow>=10.0
 
 # RTF parsing
 striprtf>=0.0.29

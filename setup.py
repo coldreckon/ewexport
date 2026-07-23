@@ -34,7 +34,10 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "striprtf>=1.6",
+        "striprtf>=0.0.29",
+        "packaging>=23.0",
+        "customtkinter>=5.2.2",
+        "pillow>=10.0",
     ],
     entry_points={
         "console_scripts": [
