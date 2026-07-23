@@ -24,7 +24,7 @@ jobs:
   release:
     runs-on: windows-latest
     environment: release  # must match the app registration's federated-credential subject
-                          # (repo:karllinder/ewexport:environment:release)
+                          # (repo:coldreckon/ewexport:environment:release)
 
     # Sign on every tag push; on a manual run, honour the `sign` input.
     env:

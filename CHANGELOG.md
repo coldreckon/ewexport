@@ -103,16 +103,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial public release.
 
-[Unreleased]: https://github.com/karllinder/ewexport/compare/v1.4.0-beta.1...HEAD
-[1.4.0]: https://github.com/karllinder/ewexport/releases/tag/v1.4.0-beta.1
-[1.3.1]: https://github.com/karllinder/ewexport/releases/tag/v1.3.1
-[1.3.0]: https://github.com/karllinder/ewexport/releases/tag/v1.3.0
-[1.2.9]: https://github.com/karllinder/ewexport/releases/tag/v1.2.9
-[1.2.8]: https://github.com/karllinder/ewexport/releases/tag/v1.2.8
-[1.2.7]: https://github.com/karllinder/ewexport/releases/tag/v1.2.7
-[1.2.6]: https://github.com/karllinder/ewexport/releases/tag/v1.2.6
-[1.2.5]: https://github.com/karllinder/ewexport/releases/tag/v1.2.5
-[1.2.0]: https://github.com/karllinder/ewexport/releases/tag/v1.2.0
-[1.1.0]: https://github.com/karllinder/ewexport/releases/tag/v1.1.0
-[1.0.0]: https://github.com/karllinder/ewexport/releases/tag/v1.0.0
-[0.1.0]: https://github.com/karllinder/ewexport/releases/tag/v0.1.0
+[Unreleased]: https://github.com/coldreckon/ewexport/compare/v1.4.0-beta.1...HEAD
+[1.4.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.4.0-beta.1
+[1.3.1]: https://github.com/coldreckon/ewexport/releases/tag/v1.3.1
+[1.3.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.3.0
+[1.2.9]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.9
+[1.2.8]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.8
+[1.2.7]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.7
+[1.2.6]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.6
+[1.2.5]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.5
+[1.2.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.0
+[1.1.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.1.0
+[1.0.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.0.0
+[0.1.0]: https://github.com/coldreckon/ewexport/releases/tag/v0.1.0
