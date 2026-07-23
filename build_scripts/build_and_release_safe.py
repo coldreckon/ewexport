@@ -3,6 +3,10 @@
 """
 Windows-Safe Local Build and Release Script for EWExport
 Builds the executable locally and uploads to GitHub release
+
+NOTE: Production releases are built and DIGITALLY SIGNED by CI
+(.github/workflows/build-release.yml) on a version tag push. This local script
+produces an UNSIGNED executable and is intended for development/testing only.
 """
 
 import os

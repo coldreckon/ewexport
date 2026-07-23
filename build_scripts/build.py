@@ -40,7 +40,8 @@ def build_executable():
     
     # Check if version file exists
     version_file = build_script_dir / 'version_info.py'
-    
+    icon_file = build_script_dir.parent / 'assets' / 'ewexport.ico'
+
     # PyInstaller command with options
     pyinstaller_args = [
         'pyinstaller',
@@ -53,7 +54,10 @@ def build_executable():
         
         # Add version information for Windows
         f'--version-file={version_file}' if version_file.exists() else None,
-        
+
+        # Application icon
+        f'--icon={icon_file}' if icon_file.exists() else None,
+
         # Add data files (use semicolon on Windows, colon on Unix)
         '--add-data=config;config',
         

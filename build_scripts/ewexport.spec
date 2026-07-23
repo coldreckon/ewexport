@@ -42,4 +42,5 @@ exe = EXE(
     entitlements_file=None,
     # Resolve relative to the spec file, not the build cwd
     version=os.path.join(SPECPATH, 'version_info.py'),
+    icon=os.path.join(SPECPATH, '..', 'assets', 'ewexport.ico'),
 )
