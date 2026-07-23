@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 class UpdateChecker:
     """Handles checking for application updates from GitHub"""
 
-    GITHUB_API_URL = "https://api.github.com/repos/karllinder/ewexport/releases/latest"
-    GITHUB_RELEASES_URL = "https://github.com/karllinder/ewexport/releases"
+    GITHUB_API_URL = "https://api.github.com/repos/coldreckon/ewexport/releases/latest"
+    GITHUB_RELEASES_URL = "https://github.com/coldreckon/ewexport/releases"
     CURRENT_VERSION = __version__  # Imported from centralized version module
     
     def __init__(self, config=None):

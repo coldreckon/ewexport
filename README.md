@@ -25,7 +25,7 @@ A Windows desktop application that converts songs from EasyWorship 6.1 database 
 
 ### Download Executable (Recommended)
 
-1. Go to the [Latest Release](https://github.com/karllinder/ewexport/releases/latest)
+1. Go to the [Latest Release](https://github.com/coldreckon/ewexport/releases/latest)
 2. Download `ewexport.exe`
 3. Run it from anywhere - it's completely standalone
 
@@ -35,7 +35,7 @@ A Windows desktop application that converts songs from EasyWorship 6.1 database 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/karllinder/ewexport.git
+   git clone https://github.com/coldreckon/ewexport.git
    cd ewexport
    ```
 

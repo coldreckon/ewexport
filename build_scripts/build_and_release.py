@@ -66,7 +66,7 @@ def get_repo_slug():
             return slug
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
-    return 'karllinder/ewexport'
+    return 'coldreckon/ewexport'
 
 def calculate_sha256(file_path):
     """Calculate SHA256 hash of file"""

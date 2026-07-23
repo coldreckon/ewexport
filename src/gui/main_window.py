@@ -320,7 +320,7 @@ Features:
 • Full Swedish character support
 
 © {RELEASE_YEAR} - Created with Python and CustomTkinter
-GitHub: https://github.com/karllinder/ewexport"""
+GitHub: https://github.com/coldreckon/ewexport"""
         
         messagebox.showinfo("About", about_text)
     

@@ -73,7 +73,7 @@ def upload_to_release(version, exe_path):
         ], check=True)
         
         print(f"✅ Successfully uploaded to release v{version}")
-        print(f"🌐 View at: https://github.com/karllinder/ewexport/releases/tag/v{version}")
+        print(f"🌐 View at: https://github.com/coldreckon/ewexport/releases/tag/v{version}")
         
         # Update release description with hash
         release_body = f"""SHA256: `{sha256}`

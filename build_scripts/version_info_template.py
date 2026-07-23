@@ -30,7 +30,7 @@ VSVersionInfo(
         StringStruct(u'OriginalFilename', u'ewexport.exe'),
         StringStruct(u'ProductName', u'EasyWorship to ProPresenter Converter'),
         StringStruct(u'ProductVersion', u'{version}.0'),
-        StringStruct(u'Comments', u'Open source worship song converter tool. Source available at github.com/karllinder/ewexport'),
+        StringStruct(u'Comments', u'Open source worship song converter tool. Source available at github.com/coldreckon/ewexport'),
         StringStruct(u'LegalTrademarks', u''),
         StringStruct(u'PrivateBuild', u''),
         StringStruct(u'SpecialBuild', u'')])
