@@ -19,7 +19,7 @@ setup(
     description="Convert songs from EasyWorship 6.1 to ProPresenter 6 format",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/karllinder/ewexport",
+    url="https://github.com/coldreckon/ewexport",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     license="MIT",
