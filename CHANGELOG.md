@@ -8,23 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Digitally signed Windows releases via **Azure Artifact Signing** (organization / Public
-  Trust). Signed builds show a verified publisher and no longer trigger the SmartScreen
-  "unknown publisher" warning. *(Azure identity validation in progress.)*
-- Application icon embedded in `ewexport.exe`.
-- CI pipeline (`.github/workflows/build-release.yml`) that builds, signs, verifies, and
-  publishes the executable to the GitHub Release on a version tag.
+## [1.4.0] - 2026-07-29
 
-### Changed
-- Releases are now built and signed by CI instead of being built locally and uploaded
-  manually. The local build scripts remain for development and produce unsigned binaries.
-
-## [1.4.0] - 2026-06-10
+First stable release of the CustomTkinter GUI, now shipped as a **digitally signed**
+Windows executable. (Previewed as `1.4.0-beta.1` on 2026-06-10.)
 
 ### Added
 - Reworked the entire GUI on **CustomTkinter** for a modern look: main window, settings
   window, and export dialogs, plus a theme module for appearance and `ttk` styling.
+- Digitally signed Windows releases via **Azure Artifact Signing** (organization / Public
+  Trust). Signed builds show the verified publisher "Saronförsamlingen i Göteborg" and no
+  longer trigger the SmartScreen "unknown publisher" warning.
+- Application icon embedded in `ewexport.exe`.
+- CI pipeline (`.github/workflows/build-release.yml`) that builds, signs, verifies, and
+  publishes the executable to the GitHub Release on a version tag.
 - Beta / pre-release track support in the local release scripts (`v*-beta.N` tags marked as
   pre-releases).
 - Baseline GUI unit tests.
@@ -34,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decode `gh` CLI output as UTF-8 in the release scripts.
 
 ### Changed
+- Releases are now built and signed by CI instead of being built locally and uploaded
+  manually. The local build scripts remain for development and produce unsigned binaries.
 - Bundle CustomTkinter + Pillow assets in the build; regenerate the Windows version resource
   from `src/version.py` (single source of truth).
 
@@ -103,8 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial public release.
 
-[Unreleased]: https://github.com/coldreckon/ewexport/compare/v1.4.0-beta.1...HEAD
-[1.4.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.4.0-beta.1
+[Unreleased]: https://github.com/coldreckon/ewexport/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.4.0
 [1.3.1]: https://github.com/coldreckon/ewexport/releases/tag/v1.3.1
 [1.3.0]: https://github.com/coldreckon/ewexport/releases/tag/v1.3.0
 [1.2.9]: https://github.com/coldreckon/ewexport/releases/tag/v1.2.9
