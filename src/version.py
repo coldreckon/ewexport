@@ -13,14 +13,14 @@ __version__ = "1.4.0"
 # Pre-release suffix for beta/rc builds. Empty string ("") for stable releases.
 # Examples: "beta.1" -> full version "1.4.0-beta.1" (GitHub release tag
 # "v1.4.0-beta.1", marked as a pre-release). Bump for each beta (beta.2, rc.1...).
-PRERELEASE = "beta.1"
+PRERELEASE = ""
 
 # Schema versions for configuration files
 SETTINGS_SCHEMA_VERSION = "1.2.0"
 SECTION_MAPPINGS_SCHEMA_VERSION = "1.2.0"
 
 # Release information
-RELEASE_DATE = "June 2026"
+RELEASE_DATE = "2026-07-29"
 RELEASE_YEAR = "2026"
 
 def get_version() -> str:
